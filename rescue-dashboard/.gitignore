@@ -1,0 +1,11 @@
+node_modules/
+*/node_modules/
+backend/rescue.db
+backend/media/*
+__pycache__/
+.pytest_cache/
+dist/
+responder/node_modules/
+backend/roads.graphml
+tools/edge_sync_state.json
+.venv/

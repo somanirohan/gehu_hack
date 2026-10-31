@@ -1,0 +1,70 @@
+{
+ "sos": {
+  "label": "SOS",
+  "icon": "🆘",
+  "fields": [
+   "type",
+   "people",
+   "message",
+   "sender",
+   "role",
+   "category_source",
+   "matched_words"
+  ]
+ },
+ "message": {
+  "label": "Message",
+  "icon": "💬",
+  "fields": [
+   "text",
+   "sender",
+   "role",
+   "category_source",
+   "matched_words"
+  ]
+ },
+ "photo": {
+  "label": "Photo",
+  "icon": "📷",
+  "fields": [
+   "caption"
+  ]
+ },
+ "road_block": {
+  "label": "Road blocked",
+  "icon": "⛔",
+  "fields": [
+   "note",
+   "radius_m",
+   "sender",
+   "role",
+   "category_source",
+   "matched_words"
+  ]
+ },
+ "medical_need": {
+  "label": "Medical need",
+  "icon": "💊",
+  "fields": [
+   "need",
+   "people"
+  ],
+  "creates_incident": "medical"
+ },
+ "supply_need": {
+  "label": "Supplies needed",
+  "icon": "📦",
+  "fields": [
+   "items",
+   "people"
+  ]
+ },
+ "safe_checkin": {
+  "label": "I am safe",
+  "icon": "✅",
+  "fields": [
+   "name",
+   "people"
+  ]
+ }
+}

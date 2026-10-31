@@ -1,0 +1,45 @@
+{
+  "_about": "Dehradun places used for the map, demo unit staging, risk layer and drills. coord_source says how each position was checked. Run tools/dehradun_places.py on a machine with internet to refine every 'approximate' entry from OpenStreetMap.",
+  "center": {"lat": 30.316496, "lon": 78.032188, "zoom": 12, "coord_source": "latlong.net (Dehradun)"},
+  "places": [
+    {"id": "city-centre", "name": "Dehradun city centre", "kind": "landmark", "lat": 30.316496, "lon": 78.032188, "coord_source": "latlong.net", "query": "Dehradun"},
+    {"id": "railway-station", "name": "Dehradun Railway Station", "kind": "landmark", "lat": 30.3139, "lon": 78.0336, "coord_source": "Wikipedia", "query": "Dehradun railway station"},
+    {"id": "clement-town", "name": "Clement Town", "kind": "landmark", "lat": 30.27083, "lon": 78.00972, "coord_source": "Wikipedia", "query": "Clement Town, Dehradun"},
+    {"id": "prem-nagar", "name": "Prem Nagar", "kind": "landmark", "lat": 30.33306, "lon": 77.96083, "coord_source": "Wikipedia (mdwiki mirror)", "query": "Prem Nagar, Dehradun"},
+    {"id": "raipur", "name": "Raipur", "kind": "landmark", "lat": 30.306, "lon": 78.098, "coord_source": "Wikipedia", "query": "Raipur, Dehradun"},
+    {"id": "doiwala", "name": "Doiwala", "kind": "landmark", "lat": 30.17583, "lon": 78.12417, "coord_source": "Wikipedia", "query": "Doiwala"},
+    {"id": "airport", "name": "Jolly Grant Airport", "kind": "landmark", "lat": 30.18972, "lon": 78.18028, "coord_source": "Wikipedia", "query": "Jolly Grant Airport"},
+    {"id": "clock-tower", "name": "Clock Tower (Ghanta Ghar)", "kind": "landmark", "lat": 30.3244, "lon": 78.0417, "coord_source": "approximate", "query": "Ghanta Ghar, Dehradun"},
+
+    {"id": "sahastradhara", "name": "Sahastradhara", "kind": "risk_flood", "lat": 30.387231, "lon": 78.131606, "coord_source": "Wikipedia", "query": "Sahastradhara, Dehradun",
+     "note": "Cloudburst and flash floods, Sept 2025", "source_url": "https://www.business-standard.com/india-news/uttarakhand-cloudburst-dehradun-sahastradhara-river-pushkar-dhami-125091600359_1.html"},
+    {"id": "tapkeshwar", "name": "Tapkeshwar Temple (Tamsa river)", "kind": "risk_flood", "lat": 30.3572724, "lon": 78.0166768, "coord_source": "Wikipedia", "query": "Tapkeshwar Temple, Dehradun",
+     "note": "Tamsa river overflowed and the temple was submerged, Sept 2025", "source_url": "https://www.businesstoday.in/india/story/cloudburst-chaos-in-dehradun-tapkeshwar-temple-it-park-sahastradhara-flooded-494142-2025-09-16"},
+    {"id": "it-park", "name": "IT Park, Sahastradhara Road", "kind": "risk_flood", "lat": 30.3636, "lon": 78.0706, "coord_source": "approximate", "query": "IT Park, Sahastradhara Road, Dehradun",
+     "note": "Flooded, Sept 2025", "source_url": "https://www.businesstoday.in/india/story/cloudburst-chaos-in-dehradun-tapkeshwar-temple-it-park-sahastradhara-flooded-494142-2025-09-16"},
+    {"id": "rispana-bridge", "name": "Rispana bridge", "kind": "risk_accident", "lat": 30.2985, "lon": 78.0565, "coord_source": "approximate", "query": "Rispana Bridge, Dehradun",
+     "note": "Accident-prone spot (CAMP list); Rispana is a seasonal river", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+
+    {"id": "jakhan", "name": "Jakhan", "kind": "risk_accident", "lat": 30.3579, "lon": 78.0700, "coord_source": "approximate", "query": "Jakhan, Dehradun",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+    {"id": "isbt", "name": "Near ISBT", "kind": "risk_accident", "lat": 30.2880, "lon": 78.0105, "coord_source": "approximate", "query": "ISBT Dehradun",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+    {"id": "mianwala", "name": "Mianwala Chowk", "kind": "risk_accident", "lat": 30.2735, "lon": 78.0815, "coord_source": "approximate", "query": "Mianwala, Dehradun",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+    {"id": "lacchiwala", "name": "Lacchiwala", "kind": "risk_accident", "lat": 30.2200, "lon": 78.1130, "coord_source": "approximate", "query": "Lachhiwala, Dehradun",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+    {"id": "doiwala-chowk", "name": "Doiwala Chowk", "kind": "risk_accident", "lat": 30.17583, "lon": 78.12417, "coord_source": "Wikipedia (Doiwala town)", "query": "Doiwala Chowk",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"},
+    {"id": "raiwala", "name": "Raiwala", "kind": "risk_accident", "lat": 30.0318, "lon": 78.2096, "coord_source": "Wikipedia (Raiwala Junction station)", "query": "Raiwala",
+     "note": "Accident-prone spot (CAMP list)", "source_url": "https://www.dailypioneer.com/2019/state-editions/12-accident-prone-areas-identified-in-doon.html"}
+  ],
+  "units": [
+    {"name": "Ambulance 108-A", "kind": "ambulance", "at": "railway-station"},
+    {"name": "Ambulance 108-B", "kind": "ambulance", "at": "clement-town"},
+    {"name": "SDRF Team 1", "kind": "rescue", "at": "raipur"},
+    {"name": "SDRF Boat 2", "kind": "boat", "at": "doiwala"},
+    {"name": "Fire Tender 3", "kind": "fire", "at": "city-centre"},
+    {"name": "Drone Unit 1", "kind": "drone", "at": "airport"},
+    {"name": "Police PCR 7", "kind": "police", "at": "prem-nagar"}
+  ]
+}
