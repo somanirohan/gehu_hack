@@ -5,6 +5,7 @@ import {
   CircleMarker,
   Tooltip,
   Polyline,
+  Pane,
   useMap,
 } from 'react-leaflet'
 import { api, liveUpdates } from './api.js'
@@ -13,7 +14,10 @@ import LiveLayers, { liveApi } from './LiveLayers'
 import FeedPanel from './FeedPanel'
 import CityLayers from './CityLayers'
 import PlannerPanel from './PlannerPanel'
+import CommanderPanel from './CommanderPanel'
 import RouteAlerts from './RouteAlerts'
+import { IncidentMarkers, UnitMarkers, SEV, TypeIcon } from './MapMarkers'
+import AgentFeed, { useAgentItems } from './AgentFeed'
 
 // Dehradun. Replaced by /api/v1/places once it loads (same value by default).
 const CENTER = [30.316496, 78.032188]
@@ -92,12 +96,7 @@ function pointAlongRoute(points, progress) {
   return points[points.length - 1]
 }
 
-const SEVERITY_COLOR = {
-  critical: '#e5484d',
-  high: '#f76b15',
-  medium: '#e2a336',
-  low: '#3e8ed0',
-}
+const SEVERITY_COLOR = SEV
 
 const STATUS_LABEL = {
   new: 'New',
@@ -129,6 +128,65 @@ function ago(iso) {
   return `${Math.floor(min / 60)} h ${min % 60} min ago`
 }
 
+// ---------------------------------------------------------------- base maps (no API key)
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
+const ESRI_ATTR = 'Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+const MAP_STYLES = {
+  // base layer without names + a separate names layer drawn ABOVE our routes
+  clean: {
+    light: { base: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, names: `${ESRI}/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
+    dark: { base: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, names: `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}` },
+    attr: ESRI_ATTR, maxZoom: 16,
+  },
+  streets: {
+    light: { base: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}` },
+    dark: { base: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}` },
+    attr: ESRI_ATTR, maxZoom: 19,
+  },
+  satellite: {
+    light: { base: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, names: `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, roads: `${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}` },
+    dark: { base: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, names: `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, roads: `${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}` },
+    attr: 'Imagery &copy; Esri, Maxar, Earthstar Geographics', maxZoom: 19,
+  },
+  osm: {
+    light: { base: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
+    dark: { base: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
+    attr: '&copy; OpenStreetMap contributors', maxZoom: 19,
+  },
+}
+const MAP_FALLBACK = { osm: 'streets', clean: 'streets', satellite: 'streets' }
+
+function BaseMap({ style, theme, showNames, onFail }) {
+  const cfg = MAP_STYLES[style] || MAP_STYLES.clean
+  const t = cfg[theme === 'dark' ? 'dark' : 'light']
+  const errors = useMemo(() => ({ n: 0 }), [style, theme]) // eslint-disable-line react-hooks/exhaustive-deps
+  const onError = () => { errors.n += 1; if (errors.n === 8) onFail() }
+  return (
+    <>
+      <TileLayer key={`base-${style}-${theme}`} url={t.base} attribution={cfg.attr} maxNativeZoom={cfg.maxZoom} maxZoom={20}
+        className={`basemap basemap-${style}`} eventHandlers={{ tileerror: onError }} />
+      {t.roads && (
+        <TileLayer key={`roads-${style}`} url={t.roads} maxNativeZoom={cfg.maxZoom} maxZoom={20} />
+      )}
+      <Pane name="map-labels" style={{ zIndex: 450, pointerEvents: 'none' }}>
+        {showNames && t.names && (
+          <TileLayer key={`names-${style}-${theme}`} url={t.names} maxNativeZoom={cfg.maxZoom} maxZoom={20} pane="map-labels" />
+        )}
+      </Pane>
+    </>
+  )
+}
+
+// Leaflet must re-measure when the layout changes (presentation mode, panels).
+function MapResizer({ dep }) {
+  const map = useMap()
+  useEffect(() => {
+    const t = [80, 350, 800].map((ms) => setTimeout(() => map.invalidateSize({ pan: true, debounceMoveend: true }), ms))
+    return () => t.forEach(clearTimeout)
+  }, [dep, map])
+  return null
+}
+
 function FlyTo({ target }) {
   const map = useMap()
 
@@ -137,68 +195,76 @@ function FlyTo({ target }) {
       map.flyTo(
         [target.lat, target.lon],
         Math.max(map.getZoom(), 15),
-        { duration: 0.6 },
+        { duration: 1.3, easeLinearity: 0.2 },
       )
     }
-  }, [target, map])
+  }, [target?.id, map]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
 }
 
-function Stats({ stats, live, verify, sync }) {
+const SUN = <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" /></svg>
+const MOON = <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+
+const ICON_LEFT = (on) => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="3" y="4" width="6.5" height="16" rx="2" fill={on ? 'currentColor' : 'none'} /></svg>
+const ICON_RIGHT = (on) => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="14.5" y="4" width="6.5" height="16" rx="2" fill={on ? 'currentColor' : 'none'} /></svg>
+
+function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPresent, present, theme, onTheme, panels, onPanel }) {
   if (!stats) return null
+  const open = incidents.filter((i) => i.status !== 'resolved')
+  const lives = open.reduce((n, i) => n + (i.people || 1), 0)
+  const critical = open.filter((i) => i.severity === 'critical').length
 
   const items = [
-    ['Open incidents', stats.open],
-    ['Awaiting approval', stats.awaiting_approval],
-    ['Reports received', stats.reports],
-    ['Via offline mesh', stats.mesh_reports],
-    ['Duplicates merged', stats.merged_reports],
-    [
-      'Median time to dispatch',
-      stats.median_minutes_to_dispatch == null
-        ? '—'
-        : `${stats.median_minutes_to_dispatch} min`,
-    ],
-    [
-      'Units free',
-      `${stats.responders_available} / ${stats.responders_total}`,
-    ],
+    ['Lives at risk', lives, 'hot'],
+    ['Critical', critical, critical ? 'hot' : ''],
+    ['Open incidents', stats.open, ''],
+    ['Awaiting approval', stats.awaiting_approval, stats.awaiting_approval ? 'warn' : ''],
+    ['Units free', `${stats.responders_available}/${stats.responders_total}`, ''],
+    ['Median to dispatch', stats.median_minutes_to_dispatch == null ? '—' : `${stats.median_minutes_to_dispatch} min`, ''],
+    ['AI actions', aiCount, 'ai'],
   ]
 
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 4v16M4 12h16" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"/></svg></span>
         <div>
-          <div className="brand-name">Rescue Control Room · Dehradun</div>
-
+          <div className="brand-name">RESQ <span className="brand-city">Dehradun Disaster Control Room</span></div>
           <div className="brand-sub">
-            <span className={`dot ${live ? 'ok' : 'off'}`} />
-            {live ? 'Live' : 'Reconnecting…'}
-
-            <span
-              className={`chain ${verify?.ok === false ? 'bad' : 'good'
-                }`}
-            >
-              {verify == null
-                ? ''
-                : verify.ok
-                  ? `Log intact · ${verify.entries} entries`
-                  : `Log tampered at #${verify.broken_at.join(', #')}`}
-            </span>
-            <span className={`sync ${sync?.last?.length ? 'good' : ''}`}>{syncText(sync)}</span>
+            <span className={`chip ${live ? 'ok' : 'off'}`}><span className={`dot ${live ? 'ok' : 'off'}`} />{live ? 'Live' : 'Reconnecting…'}</span>
+            {verify != null && (
+              <span className={`chip ${verify.ok ? '' : 'bad'}`}>
+                {verify.ok ? `Log intact · ${verify.entries}` : `Log tampered at #${verify.broken_at.join(', #')}`}
+              </span>
+            )}
+            <span className="chip">{syncText(sync)}</span>
           </div>
         </div>
       </div>
 
       <div className="stats">
-        {items.map(([label, value]) => (
-          <div className="stat" key={label}>
+        {items.map(([label, value, tone]) => (
+          <div className={`stat ${tone}`} key={label}>
             <div className="stat-value">{value}</div>
             <div className="stat-label">{label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="nav-actions">
+        <div className="layout-btns" role="group" aria-label="Show or hide panels">
+          <button className={`theme-btn ${panels?.left ? 'on' : ''}`} onClick={() => onPanel('left')}
+            aria-pressed={!!panels?.left} title={`${panels?.left ? 'Hide' : 'Show'} incidents list (Ctrl+B)`}>{ICON_LEFT(panels?.left)}</button>
+          <button className={`theme-btn ${panels?.right ? 'on' : ''}`} onClick={() => onPanel('right')}
+            aria-pressed={!!panels?.right} title={`${panels?.right ? 'Hide' : 'Show'} details panel (Ctrl+Alt+B)`}>{ICON_RIGHT(panels?.right)}</button>
+        </div>
+        <button className="theme-btn" onClick={onTheme}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+          {theme === 'dark' ? SUN : MOON}
+        </button>
+        <button className="present-btn" onClick={onPresent}>{present ? 'Exit presentation' : 'Present'}</button>
       </div>
     </header>
   )
@@ -252,43 +318,33 @@ function Queue({
         {shown.map((incident) => (
           <li key={incident.id}>
             <button
-              className={`qitem ${selectedId === incident.id ? 'sel' : ''
+              className={`qitem sev-${incident.severity} ${selectedId === incident.id ? 'sel' : ''
                 } ${incident.status === 'resolved' ? 'done' : ''}`}
               onClick={() => onSelect(incident.id)}
+              style={{ '--c': SEVERITY_COLOR[incident.severity] }}
             >
-              <span
-                className="sev"
-                style={{
-                  background: SEVERITY_COLOR[incident.severity],
-                }}
-              >
-                {incident.priority}
+              <span className="qico">
+                <TypeIcon type={incident.type} size={20} />
+                <span className="qprio">{incident.priority}</span>
               </span>
 
               <span className="qbody">
                 <span className="qtitle">
-                  #{incident.id} {incident.type}
-                  {incident.drill && <span className="pill drill">DRILL</span>}
-                  {incident.verification && <span className={`pill vf vf-${incident.verification}`} title="Verifier Agent">{VERDICT_LABEL[incident.verification]}</span>}
-                  {incident.ai_urgency && <span className={`pill ai u-${incident.ai_urgency}`} title="Triage Agent reading (AI suggestion)">AI · {incident.ai_urgency}</span>}
+                  <span className="qname">{incident.type}</span>
+                  <span className="qid">#{incident.id}</span>
+                  {['confirmed', 'possible_fake'].includes(incident.verification) && <span className={`vmark vf-${incident.verification}`} title={`Verifier Agent: ${VERDICT_LABEL[incident.verification]}`}>{incident.verification === 'confirmed' ? '✓' : incident.verification === 'possible_fake' ? '!' : incident.verification === 'likely' ? '◐' : '?'}</span>}
+                  {incident.drill && <span className="tag">drill</span>}
+                </span>
 
-                  <span
-                    className={`pill st-${incident.status}`}
-                  >
-                    {STATUS_LABEL[incident.status] ||
-                      incident.status}
-                  </span>
+                <span className="qrow">
+                  <span className={`pill st-${incident.status}`}>{STATUS_LABEL[incident.status] || incident.status}</span>
+                  {incident.ai_urgency && <span className={`ai-u u-${incident.ai_urgency}`} title="Triage Agent reading (AI suggestion)">AI {incident.ai_urgency}</span>}
                 </span>
 
                 <span className="qmeta">
-                  {incident.people}{' '}
-                  {incident.people === 1 ? 'person' : 'people'}
+                  <b>{incident.people}</b> {incident.people === 1 ? 'person' : 'people'}
                   {' · '}
-                  {incident.report_count} report
-                  {incident.report_count > 1 ? 's' : ''}
-                  {' · '}
-                  {SOURCE_LABEL[incident.source] ||
-                    incident.source}
+                  {incident.report_count} report{incident.report_count > 1 ? 's' : ''}
                   {' · '}
                   {ago(incident.first_report_at)}
                 </span>
@@ -570,23 +626,8 @@ function Detail({
                   )}% of the demo route completed`}
               </div>
 
-              <div
-                style={{
-                  height: 7,
-                  marginTop: 10,
-                  overflow: 'hidden',
-                  borderRadius: 8,
-                  background: '#273449',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${simulation.progress * 100}%`,
-                    background: '#38bdf8',
-                    transition: 'width 150ms linear',
-                  }}
-                />
+              <div className="sim-bar">
+                <div style={{ width: `${simulation.progress * 100}%` }} />
               </div>
             </div>
           )}
@@ -704,10 +745,73 @@ export default function App() {
   const [shelters, setShelters] = useState([])
   const [sync, setSync] = useState(null)
   const [toast, setToast] = useState(null)
-  const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true })
+  const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true, names: true, labels: true })
   const [pickMode, setPickMode] = useState(null)
   const [sideTab, setSideTab] = useState('incident')
   const [agentSteps, setAgentSteps] = useState([])
+  // panels the officer can close and reopen (remembered in this browser)
+  const [panels, setPanels] = useState(() => {
+    const d = { left: true, right: true, routeWatch: true, agents: true, legend: true, tools: true }
+    try { return { ...d, ...JSON.parse(localStorage.getItem('resq-panels') || '{}') } } catch { return d }
+  })
+  const togglePanel = (k) => setPanels((p) => {
+    const n = { ...p, [k]: !p[k] }
+    try { localStorage.setItem('resq-panels', JSON.stringify(n)) } catch { /* ignore */ }
+    return n
+  })
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'b') return
+      const tag = (e.target.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      e.preventDefault()
+      togglePanel(e.altKey ? 'right' : 'left')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'light')
+  const [mapStyle, setMapStyle] = useState(() => {
+    try { return localStorage.getItem('resq-map2') || 'osm' } catch { return 'osm' }
+  })
+  useEffect(() => { try { localStorage.setItem('resq-map2', mapStyle) } catch { /* ignore */ } }, [mapStyle])
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('resq-theme', next) } catch { /* private mode: still switches */ }
+    setTheme(next)
+  }
+
+  // follow the system setting until the user picks a theme
+  useEffect(() => {
+    let saved = null
+    try { saved = localStorage.getItem('resq-theme') } catch { /* ignore */ }
+    if (saved) return undefined
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!mq) return undefined
+    const on = (e) => { const t = e.matches ? 'dark' : 'light'; document.documentElement.dataset.theme = t; setTheme(t) }
+    mq.addEventListener?.('change', on)
+    return () => mq.removeEventListener?.('change', on)
+  }, [])
+  const [present, setPresent] = useState(false)
+
+  useEffect(() => {
+    const onFs = () => { if (!document.fullscreenElement) setPresent(false) }
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+
+  const togglePresent = () => {
+    setPresent((p) => {
+      const next = !p
+      try {
+        if (next && !document.fullscreenElement) document.documentElement.requestFullscreen?.()
+        if (!next && document.fullscreenElement) document.exitFullscreen?.()
+      } catch { /* full screen is optional */ }
+      return next
+    })
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -943,14 +1047,18 @@ export default function App() {
     )
     : null
 
+  const agentItems = useAgentItems(tick, log)
+
   const simRoute = simulation?.route || []
   const simCurrent = simRoute.length
     ? pointAlongRoute(simRoute, simulation.progress)
     : null
 
   return (
-    <div className="app">
-      <Stats stats={stats} live={live} verify={verify} sync={sync} />
+    <div className={`app ${present ? 'presenting' : ''}`}>
+      <Stats stats={stats} live={live} verify={verify} sync={sync} incidents={incidents}
+        aiCount={agentItems.length} onPresent={togglePresent} present={present}
+        theme={theme} onTheme={toggleTheme} panels={panels} onPanel={togglePanel} />
 
       {error && (
         <div className="error" role="alert">
@@ -958,14 +1066,14 @@ export default function App() {
         </div>
       )}
 
-      <main className="grid">
-        <Queue
+      <main className={`grid ${panels.left ? '' : 'no-left'} ${panels.right ? '' : 'no-right'}`}>
+        {panels.left && <Queue
           incidents={incidents}
           selectedId={selectedId}
           onSelect={openIncident}
           filter={filter}
           setFilter={setFilter}
-        />
+        />}
 
         <section className="mapwrap" aria-label="Incident map">
           <MapContainer
@@ -973,71 +1081,35 @@ export default function App() {
             zoom={places.center?.zoom || CENTER_ZOOM}
             className="map"
             scrollWheelZoom
+            zoomSnap={0.25}
+            zoomDelta={0.5}
+            wheelPxPerZoomLevel={110}
+            wheelDebounceTime={30}
+            inertiaDeceleration={2200}
           >
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            {/* Crystal-clear map: base map without names at the bottom, our routes and
+                areas above it, then street and place NAMES on top of the routes, then markers.
+                Esri (ArcGIS) tiles need no API key. If a style fails to load, the next one is used. */}
+            <BaseMap style={mapStyle} theme={theme} showNames={layers.names}
+              onFail={() => setMapStyle((m) => MAP_FALLBACK[m] || m)} />
 
             <FlyTo target={flyTarget} />
+            <MapResizer dep={`${present}-${panels.left}-${panels.right}`} />
 
             <CityLayers places={places.places} shelters={shelters} showRisk={layers.risk} showShelters={layers.shelters} />
             <LiveLayers tick={tick} officer={officer} pickMode={pickMode} onPick={onPick} showUnits={false} showRoutes={layers.routes} />
 
-            {responders.map((responder) => (
-              <CircleMarker
-                key={`r${responder.id}`}
-                center={[responder.lat, responder.lon]}
-                radius={6}
-                pathOptions={{
-                  color: '#0f172a',
-                  weight: 2,
-                  fillColor:
-                    responder.status === 'available'
-                      ? '#2fb67c'
-                      : '#8792a2',
-                  fillOpacity: 1,
-                }}
-              >
-                <Tooltip>
-                  {responder.name} · {responder.kind} · {responder.status}
-                </Tooltip>
-              </CircleMarker>
-            ))}
+            <UnitMarkers responders={responders} showLabels={layers.labels} />
 
-            {incidents
-              .filter((incident) => incident.status !== 'resolved')
-              .map((incident) => (
-                <CircleMarker
-                  key={incident.id}
-                  center={[incident.lat, incident.lon]}
-                  radius={8 + Math.min(incident.report_count, 6) * 2}
-                  eventHandlers={{
-                    click: () => openIncident(incident.id),
-                  }}
-                  pathOptions={{
-                    color:
-                      selectedId === incident.id
-                        ? '#ffffff'
-                        : SEVERITY_COLOR[incident.severity],
-                    weight: selectedId === incident.id ? 3 : 2,
-                    fillColor: SEVERITY_COLOR[incident.severity],
-                    fillOpacity: 0.55,
-                  }}
-                >
-                  <Tooltip>
-                    #{incident.id} {incident.type} · priority{' '}
-                    {incident.priority} · {STATUS_LABEL[incident.status]}
-                  </Tooltip>
-                </CircleMarker>
-              ))}
+            <IncidentMarkers incidents={incidents} selectedId={selectedId} onSelect={openIncident} statusLabel={STATUS_LABEL} showLabels={layers.labels} />
 
             {simRoute.length > 1 && simCurrent && (
               <>
                 <Polyline
                   positions={simRoute}
+                  key={`sim-${simulation.mode}`}
+                  className={`sim-${simulation.mode === 'aerial' ? 'aerial' : simulation.mode === 'fallback' ? 'fallback' : 'road'}`}
                   pathOptions={{
-                    color: simulation.mode === 'aerial' ? '#a78bfa' : simulation.mode === 'fallback' ? '#f59e0b' : '#38bdf8',
                     weight: 4,
                     dashArray: simulation.mode === 'aerial' ? '4 7' : undefined,
                     opacity: 0.9,
@@ -1047,10 +1119,7 @@ export default function App() {
                 <CircleMarker
                   center={simCurrent}
                   radius={10}
-                  pathOptions={{
-                    color: '#ffffff',
-                    weight: 3,
-                    fillColor: simulation.mode === 'aerial' ? '#a78bfa' : simulation.mode === 'fallback' ? '#f59e0b' : '#38bdf8',
+                  className={'sim-dot'} pathOptions={{ weight: 3,
                     fillOpacity: 1,
                   }}
                 >
@@ -1063,41 +1132,32 @@ export default function App() {
           </MapContainer>
 
           {simulation && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 12,
-                left: 12,
-                zIndex: 1000,
-                padding: '10px 14px',
-                borderRadius: 10,
-                background: '#111827',
-                border: '1px solid #38bdf8',
-                color: '#e5f3ff',
-                maxWidth: 260,
-                pointerEvents: 'none',
-              }}
-            >
+            <div className="sim-box">
               <strong>{simulation.mode === 'aerial' ? 'Drone simulation' : simulation.mode === 'fallback' ? 'Rescue simulation · fallback' : 'Road rescue simulation'}</strong>
 
-              <div style={{ marginTop: 4, fontSize: 12 }}>
+              <div className="sim-line">
                 {simResponder?.name || 'Rescue unit'}
                 {' → '}
                 Incident #{simulation.incidentId}
               </div>
 
-              <div style={{ marginTop: 4, fontSize: 12 }}>
+              <div className="sim-line">
                 {simulation.progress >= 1
                   ? 'Demo arrival reached'
                   : `${Math.round(simulation.progress * 100)}% route completed`}
               </div>
-              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.85 }}>
+              <div className="sim-note">
                 {simulation.routeMessage}
               </div>
             </div>
           )}
 
-          <div className="maptools">
+          <div className={`maptools ${panels.tools ? '' : 'folded'}`}>
+            <button className="fold-btn" onClick={() => togglePanel('tools')} aria-expanded={panels.tools}
+              title={panels.tools ? 'Fold map layers' : 'Show map layers'}>
+              {panels.tools ? 'Layers ▴' : 'Layers ▾'}
+            </button>
+            {panels.tools && <>
             <button className={pickMode === 'block' ? 'on' : ''} onClick={() => setPickMode(pickMode === 'block' ? null : 'block')}>
               {pickMode === 'block' ? 'Click the road on the map…' : 'Mark road blocked'}
             </button>
@@ -1113,15 +1173,27 @@ export default function App() {
             >
               Reset demo
             </button>
-            {[['risk', 'Risk spots'], ['shelters', 'Shelters'], ['routes', 'Unit routes']].map(([k, label]) => (
+            <label className="map-style">
+              Map
+              <select value={mapStyle} onChange={(e) => setMapStyle(e.target.value)} aria-label="Map style">
+                <option value="osm">OpenStreetMap</option>
+                <option value="streets">Streets (Esri)</option>
+                <option value="satellite">Satellite</option>
+                <option value="clean">Clean (light)</option>
+              </select>
+            </label>
+            {[['names', 'Street names'], ['labels', 'Unit & incident labels'], ['risk', 'Risk spots'], ['shelters', 'Shelters'], ['routes', 'Unit routes']].map(([k, label]) => (
               <label key={k}>
                 <input type="checkbox" checked={layers[k]} onChange={() => setLayers((l) => ({ ...l, [k]: !l[k] }))} />
                 {label}
               </label>
             ))}
+            </>}
           </div>
 
-          <RouteAlerts tick={tick} officer={officer} />
+          <RouteAlerts tick={tick} officer={officer} open={panels.routeWatch} onToggle={() => togglePanel('routeWatch')} />
+
+          <AgentFeed items={agentItems} max={present ? 10 : 5} open={panels.agents} onToggle={() => togglePanel('agents')} />
 
           {toast && (
             <button className="toast" onClick={() => { setSideTab('feed'); setToast(null) }}>
@@ -1129,7 +1201,11 @@ export default function App() {
             </button>
           )}
 
-          <div className="legend">
+          {!panels.legend && (
+            <button className="legend-tab" onClick={() => togglePanel('legend')} title="Show the legend">Legend ▴</button>
+          )}
+          {panels.legend && <div className="legend">
+            <button className="fold-x" onClick={() => togglePanel('legend')} aria-label="Hide the legend" title="Hide">✕</button>
             {Object.entries(SEVERITY_COLOR).map(([key, color]) => (
               <span key={key}>
                 <i style={{ background: color }} />
@@ -1137,30 +1213,24 @@ export default function App() {
               </span>
             ))}
 
-            <span>
-              <i style={{ background: '#2fb67c' }} />
-              unit free
-            </span>
-
-            <span>
-              <i style={{ background: '#8792a2' }} />
-              unit busy
-            </span>
-
-            <span><i style={{ background: '#27b5c9' }} />flood-prone</span>
-            <span><i style={{ background: '#f5a524' }} />accident-prone</span>
-            <span><i style={{ background: '#e5484d', borderRadius: 0 }} />road blocked</span>
+            <span><i className="lg-unit" />unit free</span>
+            <span><i className="lg-unit busy" />unit on task</span>
+            <span><i className="lg-line" />route</span>
+            <span><i className="lg-line red" />re-routed</span>
+            <span><i className="lg-ring blue" />flood-prone</span>
+            <span><i className="lg-ring amber" />accident-prone</span>
+            <span><i className="lg-block" />road blocked</span>
 
             {simulation && (
               <span>
-                <i style={{ background: simulation.mode === 'aerial' ? '#a78bfa' : simulation.mode === 'fallback' ? '#f59e0b' : '#38bdf8' }} />
+                <i className="lg-line" />
                 {simulation.mode === 'aerial' ? 'drone route' : simulation.mode === 'fallback' ? 'fallback route' : 'road route'}
               </span>
             )}
-          </div>
+          </div>}
         </section>
 
-        <div className="side">
+        {panels.right && <div className="side">
           <label className="officer">
             <span>Officer</span>
 
@@ -1173,7 +1243,7 @@ export default function App() {
           </label>
 
           <div className="seg sidetabs" role="tablist">
-            {[['incident', 'Incident'], ['planner', 'AI Planner'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
+            {[['incident', 'Incident'], ['planner', 'AI Planner'], ['ask', 'Ask AI'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
               <button key={k} className={sideTab === k ? 'on' : ''} onClick={() => setSideTab(k)}>{label}</button>
             ))}
           </div>
@@ -1196,8 +1266,10 @@ export default function App() {
 
           {sideTab === 'planner' && <PlannerPanel officer={officer} liveSteps={agentSteps} onOpenIncident={openIncident} />}
 
+          <div className="ask-wrap" hidden={sideTab !== 'ask'}><CommanderPanel officer={officer} onOpenIncident={openIncident} /></div>
+
           {sideTab === 'log' && <LogPanel log={log} />}
-        </div>
+        </div>}
       </main>
     </div>
   )

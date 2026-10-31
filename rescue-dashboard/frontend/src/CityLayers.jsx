@@ -2,19 +2,20 @@
 // police source for each) and relief shelters synced from the mesh app.
 import { CircleMarker, Popup, Tooltip } from 'react-leaflet'
 
+// Colours come from CSS tokens through classNames (see styles.css).
 const RISK = {
-  risk_flood: { color: '#27b5c9', label: 'Flood-prone' },
-  risk_accident: { color: '#f5a524', label: 'Accident-prone' },
+  risk_flood: { cls: 'risk-flood', label: 'Flood-prone' },
+  risk_accident: { cls: 'risk-accident', label: 'Accident-prone' },
 }
 
-const SHELTER_COLOR = { OPEN: '#2fb67c', FULL: '#e5484d', CLOSED: '#8792a2' }
+const SHELTER_CLASS = { OPEN: 'shelter-open', FULL: 'shelter-full', CLOSED: 'shelter-closed' }
 
 export default function CityLayers({ places = [], shelters = [], showRisk = true, showShelters = true }) {
   return (
     <>
       {showRisk && places.filter((p) => RISK[p.kind]).map((p) => (
         <CircleMarker key={`risk-${p.id}`} center={[p.lat, p.lon]} radius={7}
-          pathOptions={{ color: RISK[p.kind].color, weight: 2, fillColor: RISK[p.kind].color, fillOpacity: 0.18, dashArray: '3 4' }}>
+          className={RISK[p.kind].cls} pathOptions={{ weight: 2, fillOpacity: 0.18, dashArray: '3 4' }}>
           <Tooltip>{RISK[p.kind].label}: {p.name}</Tooltip>
           <Popup>
             <strong>{RISK[p.kind].label}: {p.name}</strong>
@@ -28,8 +29,8 @@ export default function CityLayers({ places = [], shelters = [], showRisk = true
       ))}
 
       {showShelters && shelters.map((s) => (
-        <CircleMarker key={`sh-${s.id}`} center={[s.lat, s.lon]} radius={9}
-          pathOptions={{ color: '#0d1117', weight: 2, fillColor: SHELTER_COLOR[(s.status || '').toUpperCase()] || '#2fb67c', fillOpacity: 0.95 }}>
+        <CircleMarker key={`sh-${s.id}-${s.status}`} center={[s.lat, s.lon]} radius={9}
+          className={SHELTER_CLASS[(s.status || '').toUpperCase()] || 'shelter-open'} pathOptions={{ weight: 2, fillOpacity: 0.95 }}>
           <Tooltip>Shelter: {s.name} · {s.status || 'unknown'}</Tooltip>
           <Popup>
             <strong>Shelter: {s.name}</strong>

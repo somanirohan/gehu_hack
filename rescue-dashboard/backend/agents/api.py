@@ -112,3 +112,35 @@ async def decide_route_alert(alert_id: int, body: AlertDecision):
         raise HTTPException(404, "Unknown alert")
     await _send([tuple(n) for n in notes] + [("changed", {"route_alert": alert_id})])
     return {"ok": True, "notes": len(notes)}
+
+
+# ---------------------------------------------------------------- Commander Assistant (ReAct) + SITREP
+from agents import commander  # noqa: E402
+
+
+class AskIn(BaseModel):
+    question: str
+    history: list[dict] = []
+    officer: str = "Duty Officer"
+
+
+class SitrepIn(BaseModel):
+    officer: str = "Duty Officer"
+
+
+@router.post("/ask")
+async def ask_commander(body: AskIn):
+    """Ask the Commander Assistant about the live situation. Read-only: it never changes anything."""
+    from v1 import _send
+    out = await run_in_threadpool(commander.ask, body.question, body.history, body.officer)
+    await _send([("changed", {"commander": True})])
+    return out
+
+
+@router.post("/sitrep")
+async def make_sitrep(body: SitrepIn):
+    """Situation report: numbers counted by code, words by AI (checked by code)."""
+    from v1 import _send
+    out = await run_in_threadpool(commander.sitrep, body.officer)
+    await _send([("changed", {"sitrep": True})])
+    return out

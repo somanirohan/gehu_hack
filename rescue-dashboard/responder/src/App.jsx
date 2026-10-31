@@ -273,7 +273,7 @@ function Duty({ onLogout }) {
 
       <section className="mapbox" aria-label="Map">
         <MapContainer center={center} zoom={15} className="map" zoomControl={false}>
-          <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}" maxNativeZoom={19} maxZoom={20} />
           <FitRoute route={route} version={`${task?.id}-${task?.route_version}`} />
           <TapToReport active={reportMode} onTap={reportAt} />
           {(data?.hazards || []).map((h) => (

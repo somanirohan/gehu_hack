@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Circle, CircleMarker, Polyline, Popup, Tooltip, useMapEvents } from 'react-leaflet'
 
-const KIND_COLOR = { ambulance: '#2fb67c', rescue: '#3e8ed0', fire: '#e5484d', boat: '#27b5c9', police: '#8e7cf0', drone: '#a78bfa' }
+// Colours come from CSS tokens through classNames (route-line, route-rerouted, hz-active…); see styles.css.
 
 async function getJSON(url, options) {
   const r = await fetch(url, options)
@@ -46,8 +46,8 @@ export default function LiveLayers({ tick, officer = 'Duty Officer', pickMode = 
       {hazards.map((h) => {
         const active = h.status === 'active'
         return (
-          <Circle key={`hz${h.id}`} center={[h.lat, h.lon]} radius={h.radius_m}
-            pathOptions={{ color: active ? '#e5484d' : '#f5a524', fillColor: active ? '#e5484d' : '#f5a524', fillOpacity: active ? 0.3 : 0.15, weight: 2, dashArray: active ? null : '6 6' }}>
+          <Circle key={`hz${h.id}-${h.status}`} center={[h.lat, h.lon]} radius={h.radius_m}
+            className={active ? 'hz-active' : 'hz-unverified'} pathOptions={{ fillOpacity: active ? 0.3 : 0.15, weight: 2, dashArray: active ? null : '6 6' }}>
             <Popup>
               <strong>{active ? 'Blocked' : 'Unverified report'}: {h.note || h.kind.replace('_', ' ')}</strong>
               <div>Source: {h.source} · {h.reports} report{h.reports > 1 ? 's' : ''}</div>
@@ -60,9 +60,15 @@ export default function LiveLayers({ tick, officer = 'Duty Officer', pickMode = 
         )
       })}
 
+      {/* route casing: a wider light line under each route keeps it crisp on any map */}
+      {showRoutes && units.map((u) => u.assignment?.route?.length > 1 && u.kind !== 'drone' && (
+        <Polyline key={`rc${u.id}-${u.assignment.route_version}`} positions={u.assignment.route} interactive={false}
+          className={'route-casing'} pathOptions={{ weight: 9, opacity: 1, lineCap: 'round', lineJoin: 'round' }} />
+      ))}
+
       {showRoutes && units.map((u) => u.assignment?.route?.length > 1 && (
         <Polyline key={`rt${u.id}-${u.assignment.route_version}`} positions={u.assignment.route}
-          pathOptions={{ color: u.assignment.reroute_reason ? '#f5a524' : (KIND_COLOR[u.kind] || '#3e8ed0'), weight: 5, opacity: 0.85, dashArray: u.kind === 'drone' ? '4 7' : null }}>
+          className={u.assignment.reroute_reason ? 'route-rerouted' : (u.kind === 'drone' ? 'route-drone' : 'route-line')} pathOptions={{ weight: 5, opacity: 0.92, dashArray: u.kind === 'drone' ? '4 8' : null, lineCap: 'round', lineJoin: 'round' }}>
           <Tooltip sticky>
             {u.name} → incident #{u.assignment.incident_id} · ETA {u.assignment.eta_min ?? '?'} min · {u.assignment.route_source}
             {u.assignment.reroute_reason ? ` · REROUTED: ${u.assignment.reroute_reason}` : ''}
@@ -72,7 +78,7 @@ export default function LiveLayers({ tick, officer = 'Duty Officer', pickMode = 
 
       {showUnits && units.map((u) => (
         <CircleMarker key={`u${u.id}`} center={[u.lat, u.lon]} radius={8}
-          pathOptions={{ color: '#0d1117', weight: 2, fillColor: u.status === 'available' ? (KIND_COLOR[u.kind] || '#2fb67c') : '#f5a524', fillOpacity: 1 }}>
+          className={u.status === 'available' ? 'shelter-open' : 'hz-unverified'} pathOptions={{ weight: 2, fillOpacity: 1 }}>
           <Tooltip>{u.name} ({u.code}) · {u.status}{u.last_seen ? ' · live GPS' : ''}</Tooltip>
         </CircleMarker>
       ))}
