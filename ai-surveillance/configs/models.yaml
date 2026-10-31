@@ -1,0 +1,224 @@
+# ===== models.yaml =====
+# Central registry of all model weights + inference params.
+# Heavy models are intentionally absent here until their phase is built
+# (pose -> Phase 2, reid/face -> Phase 3, fire/smoke etc -> Phase 4).
+# Every entry is a single source of truth loaded by the relevant core/ wrapper.
+
+detector:
+  name: yolov8n
+  runtime: pytorch                   # pytorch (default — ultralytics NMS wins on detector-only)
+                                        # onnx_direct available if needed; onnx via ultralytics also OK
+  weights: models/yolov8n.pt            # PyTorch weights (source for export; also used when runtime=pytorch)
+  onnx: models/yolov8n.onnx             # FP16 ONNX export (produced by tools/export_onnx.py)
+  imgsz: 640                           # 640x640 keeps VRAM low; 960x540 is the upscale-if-needed fallback
+  half: true                           # FP16 on CUDA — see hardware budget Section 1
+  device: cuda:0
+  conf: 0.35
+  iou: 0.5
+  classes: [0, 24, 26, 28, 39]          # persons (0) + backpack (24) + handbag (26) + suitcase (28) + bottle (39)
+                                        # ObjectLeftDetector requires non-person classes; cost is negligible (rare classes)
+
+# --- Phase 5A: Pose Smoother ---
+# One-Euro filter per keypoint + EMA bbox stabilisation + confidence gating.
+# Applied after raw pose estimation; output feeds fall detector, fight, smoking.
+pose_smoother:
+  min_cutoff: 1.0          # One-Euro min cutoff (Hz). Lower = smoother, more lag.
+  beta: 0.007              # One-Euro speed coeff. Higher = faster on fast motions.
+  gate_conf: 0.30          # Reject keypoints below this confidence; hold last good.
+  hold_frames: 6           # Hold last-good position for this many low-conf frames.
+  ema_alpha: 0.6           # EMA weight for bbox (1.0=no smoothing, 0.0=frozen).
+  teleport_px: 100.0       # Jump above this px triggers filter re-init (ID switch guard).
+  freq: 30.0               # Camera fps hint for One-Euro filter.
+
+# --- Phase 2: pose for fall detection ---
+# Runs only on person crops from the tracker's boxes, never full frame.
+# Same ultralytics family -> same optimizations, single warmup.
+pose:
+  name: yolov8n-pose
+  runtime: onnx_direct               # onnx_direct (default — bypasses ultralytics wrapper; ~44% lower overhead)
+                                        # pytorch available as rollback if any accuracy regression
+  weights: models/yolov8n-pose.pt      # PyTorch weights
+  onnx: models/yolov8n-pose.onnx       # FP16 ONNX export
+  imgsz: 160                           # crop-only pose: 160 is small enough that overhead is dominated by model, not letterbox
+  half: true                           # FP16 on CUDA
+  device: cuda:0
+  conf: 0.25                           # lower than detector — pose on a tight crop is harder
+
+# --- Phase 2: fall-detection state machine thresholds ---
+# Tuned against real-webcam false-trigger data. The previous values
+# (aspect_threshold=1.0, kp_height_frac=0.60, no min_upright_s) fired every
+# 4-7 seconds during normal sitting/standing/leaning because:
+#   - aspect 1.0-1.2 (slightly crouched) was being classified "horizontal"
+#   - sitting puts hips at ~0.55-0.65 of bbox height, below the old 0.60 threshold
+#   - a single upright frame during fidgeting re-armed the trigger, so after
+#     cooldown the next slightly-horizontal frame fired again
+# New values:
+fall:
+  aspect_threshold: 1.5               # bbox w/h above this = "horizontal"
+                                        # standing ~0.4, sitting ~0.8-1.2,
+                                        # leaning-forward ~1.0-1.3,
+                                        # genuine lying-flat fall ~1.5-2.0+
+  keypoint_height_frac: 0.75          # hip/shoulder y at or below this fraction
+                                        # of bbox height = "low"
+                                        # standing shoulders ~0.05, hips ~0.5;
+                                        # sitting hips ~0.55-0.65 (below old 0.60);
+                                        # lying-flat ~0.85-0.95
+  transition_window_s: 1.5            # UPRIGHT -> FALLEN must complete within this
+                                        # to count as a fall (filters slow sit-down)
+  cooldown_s: 5.0                      # after a FALL event, suppress re-trigger for this long
+  min_upright_s: 1.0                   # NEW: track must be continuously upright for
+                                        # at least this long before being eligible to
+                                        # fire a fall. A single upright frame during
+                                        # fidgeting no longer re-arms the trigger.
+  min_conf: 0.30                       # ignore keypoints below this confidence
+
+# Debug: set env FALL_DEBUG=1 to log the next 10 triggers + suppressed
+# would-triggers with full signal breakdown (aspect, kp_frac, upright_dur,
+# delta). Useful for tuning. Cap via FALL_DEBUG_LIMIT=N.
+
+# --- Phase 3: Person Re-Identification ---
+# Lightweight body-embedding model. Uses torchvision ResNet18 (strip FC ->
+# 512-dim avgpool features). ~11M params, same scale as YOLOv8n.
+# OSNet-x0.25 (3x smaller, purpose-built for ReID) is the production target;
+# the architecture supports swapping it in by changing this config block.
+reid:
+  model: osnet_x0_25                     # Phase 5.1: OSNet-x0.25 (torchreid).
+                                          # Trained on Market-1501 + DukeMTMC.
+                                          # Same-person cosine sim ≥ 0.95;
+                                          # different-person sim ≈ 0.3–0.5.
+                                          # Fallback: resnet18 (ImageNet, not ReID-trained)
+  device: cuda:0
+  half: true                             # FP16 on CUDA
+  imgsz: 256                             # OSNet standard crop height (256×128 tall portrait)
+  dim: 512                               # embedding dimension (same for both OSNet and ResNet18)
+  match_threshold: 0.65                   # Wide-margin threshold for OSNet (same-person ~0.95,
+                                          # different-person ~0.3–0.5 → 0.65 sits safely between).
+                                          # NOTE: if you revert to resnet18, raise this to 0.95.
+  lost_ttl_s: 30.0                       # how long to keep lost-track embeddings for re-linking
+
+
+# --- Phase 3: Face Recognition ---
+# Uses insightface buffalo_s pack: SCRFD-500M (det) + MobileFaceNet (rec).
+# Models auto-download to ~/.insightface/models/buffalo_s/ on first use (~16MB).
+face:
+  model_pack: buffalo_s                  # buffalo_s = SCRFD-500M + MobileFaceNet (small variant)
+  det_size: 320                          # SCRFD input size; 320 is fast, 640 is more accurate
+  dim: 512                               # MobileFaceNet embedding dimension
+  match_threshold: 0.4                   # cosine sim above this = same face
+  index_path: models/face_index          # where to persist the enrolled-face FAISS index
+
+# --- Phase 4: Fire/Smoke Detection ---
+# Uses YOLOv8n fine-tuned on D-Fire dataset for accurate detection.
+# Model source: rabahdev/fire-smoke-yolov8n (HuggingFace)
+# Classes: 0=smoke, 1=fire
+# mAP50: 0.754on test split (4,306 images)
+# If weights path is invalid, falls back to HSV heuristic (unreliable).
+fire_smoke:
+  weights: models/fire_smoke_yolov8n.pt     # D-Fire fine-tuned model
+  conf: 0.45                                # raised from 0.25 — cuts false positives on bright backgrounds/windows
+  imgsz: 640                                # input size
+  min_consecutive_frames: 2                 # require detection in >=2 of last 5 relevant frames before emitting event
+                                            # eliminates single-frame false positives (white walls, reflections)
+  # HSV fallback params (used only when YOLO model unavailable)
+  fire_hsv_low: [0, 100, 150]
+  fire_hsv_high: [25, 255, 255]
+  fire_min_pixel_ratio: 0.01
+  fire_min_duration: 2
+  smoke_hsv_low: [0, 0, 140]
+  smoke_hsv_high: [180, 30, 220]
+  smoke_min_pixel_ratio: 0.60
+
+# --- Phase 4: Smoking Detection ---
+# Uses YOLOv8n fine-tuned for cigarette/vape detection.
+# Model source: cadilak/smoking-detection-yolov8 (HuggingFace)
+# Classes: Smoke (0), Person (1), Cigarette (2), Vape (3)
+# If weights path is invalid, falls back to HSV glow heuristic.
+smoking:
+  weights: models/smoking_yolov8n.pt       # cigarette/vape detection model
+  conf: 0.25
+  imgsz: 320
+  # Phase 5E: oscillation detection — require rhythmic hand rise/lower before YOLO confirm
+  min_oscillations: 2                      # minimum Y-velocity sign changes in gesture window
+  oscillation_window_frames: 30            # number of recent wrist positions to check
+  # HSV fallback params (used only when YOLO model unavailable)
+  min_object_area: 20
+  glow_hsv_low: [0, 100, 200]
+  glow_hsv_high: [20, 255, 255]
+
+# --- Phase 4: Phone-Watching Detection ---
+# Uses a separate YOLOv8n pass for COCO class 67 (cell phone) + head-pose
+# heuristic from Phase 2 pose keypoints (nose below shoulder line = looking down).
+phone:
+  weights: models/yolov8n.pt              # separate YOLOv8n instance, COCO class 67 only
+  imgsz: 480                              # raised from 320 — phone at sitting distance is ~30-40px at 320; 480 gives ~50-60px
+  conf: 0.15                              # phones at angle/distance rarely reach 0.3; 0.15 is the working floor
+                                          # PHONE_DEBUG=1 env var shows raw confidences to diagnose misses
+  confirm_frames: 3                       # require N consecutive detections before emitting event (kills single-frame noise)
+  hold_frames: 15                         # keep emitting event for this many frames after last detection (kills flicker)
+
+# --- Phase 4: Personnel Gathering Detection ---
+# No model — clusters track centroids with fixed-radius grouping.
+gathering:
+  min_people: 3                           # minimum cluster size to trigger
+  radius_pixels: 150                      # max distance between people in a cluster
+  cooldown_s: 10.0                        # suppress re-trigger for the same cluster
+  sustained_s: 2.0                        # seconds count must exceed threshold before firing
+  sustained_frames: 5                     # DEPRECATED — converted to sustained_s at 30fps if sustained_s absent
+
+
+# --- Phase 4: Violence Detection — ResNet50 binary classifier ---
+# Backbone : torchvision ResNet50 (IMAGENET1K_V2 pretrained)
+# Head     : Linear(2048 → 2) — index 0 = no_violence, index 1 = violence
+# Input    : full frame resized to 224×224, ImageNet-normalised (BGR→RGB)
+# Decision : rolling window of per-frame softmax confidences; fires VIOLENCE
+#            when ≥ min_sustained_frames in the last window_frames exceed
+#            conf_threshold, subject to cooldown_s suppression.
+#
+# To use fine-tuned weights (e.g., trained on UCF-Crime / RWF-2000):
+#   1. Set `weights` to the .pt checkpoint path
+#   2. The checkpoint may be a raw state_dict or {"model": state_dict}
+# If weights: null, ImageNet pretrained backbone is used (good for prototyping;
+# fine-tune for production-level precision/recall on complex violent scenes).
+#
+# Falls back to IoU+motion heuristic if torch/torchvision unavailable.
+# Phase 5D FightDetector (skeleton-based) runs in parallel; emits FIGHT.
+violence:
+  weights: null                   # null = ImageNet pretrained; set to path/to/violence_resnet50.pt
+  device: cuda:0
+  half: true                      # FP16 on CUDA — saves ~50 MB VRAM vs FP32
+  imgsz: 224                      # ResNet50 canonical input size
+  conf_threshold: 0.65            # per-frame softmax(violence) to count as "active"
+  window_frames: 10               # rolling deque length (at every:3, ≈1s of real frames)
+  min_sustained_frames: 4         # min frames in window above conf_threshold to fire
+  cooldown_s: 10.0                # suppress re-trigger for this many seconds after firing
+  # Legacy heuristic fallback params (used only when torch/torchvision unavailable)
+  iou_threshold: 0.3
+  motion_threshold: 40.0
+  window_s: 1.5
+
+# --- Phase 5D: Skeleton-Based Fight Detection ---
+# Runs on smoothed poses from PoseSmoother (Phase 5A).
+# Emits FightEvent with clip_ref when kinematic fight signatures are sustained.
+fight:
+  proximity_px: 200.0        # max centroid distance to form a "pair of interest"
+  active_keypoints: [5,6,7,8,9,10,15,16]  # shoulder/elbow/wrist/ankle
+  velocity_threshold: 15.0   # mean px/frame above which motion is "high"
+  window_s: 1.5              # signals must sustain for this long
+  cooldown_s: 10.0           # suppress re-trigger for same pair
+  min_window_frames: 15      # minimum history frames before classifier runs
+
+# --- Phase 4: Object-Left-Behind Detection ---
+# Tracks non-person objects (bags, backpacks, suitcases) that remain stationary.
+object_left:
+  min_stationary_s: 30.0                # seconds object must be stationary
+  position_variance_threshold: 100.0     # max variance in position to count as stationary
+  cooldown_s: 60.0                       # suppress re-trigger for same object
+
+# --- Phase 5B: Pedestrian Attribute Recognition (PAR) ---
+par:
+  weights: null                          # uses default torchvision model / fallback
+  imgsz: 128
+  conf: 0.5
+  window_frames: 15
+  device: cuda:0
+  half: true

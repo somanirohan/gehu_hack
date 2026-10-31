@@ -1,0 +1,153 @@
+# ===== pipeline.yaml =====
+# Runtime behavior of the real-time loop. Every feature module is toggleable
+# here (constraint #6) so Phases 2+ get added without code changes to main_loop.
+
+# --- Bitchat mesh alert integration ---
+# Sends surveillance alerts and VLM scene descriptions to your Android phone
+# via Bitchat's mesh network.
+# Setup:
+#   1. Open Bitchat on Android → Settings → VLM API Settings → Enable
+#   2. Find your Android WiFi IP: Settings → WiFi → tap network → IP address
+#   3. Set ip below and flip enabled to true
+bitchat:
+  enabled: true             
+  ip: "10.164.102.114"         # Android WiFi IP for the Bitchat VLM API
+  port: 8765
+  # channel: "surveillance"  # Optional: uncomment to send to specific channel, otherwise uses default destination
+  rate_limit_s: 5.5
+  send_keyframes: false     # no detector logs are sent — only the VLM image + description
+  send_scene: true
+
+source:
+  type: webcam          # webcam | file | rtsp
+  path: null            # used for `file` and `rtsp`
+  loop: true            # restart file on EOF (let accuracy tests run indefinitely)
+  reconnect: true       # rtsp only — auto-reconnect
+  width: 1280
+  height: 720
+  fps: 30.0             # AUTHORITATIVE frame rate. Every module that converts
+                        # seconds <-> frames reads this via core.config.load_fps().
+                        # Must match the real capture rate of the source above —
+                        # if it doesn't, every time-based window is wrong.
+
+display:
+  enabled: true
+  resize_w: 960         # display-only upscale; inference stays at detector.imgsz
+  show_fps: true
+  show_vram: true
+  window: "ai-surveillance (Phase 4+)"
+
+# Motion prefilter — skip heavy stages on static frames
+motion_filter:
+  enabled: true
+  threshold: 0.01          # fraction of frame that must change to count as motion
+  min_changed_pixels: 1000 # minimum changed pixels to count as motion
+
+# ---- FrameRouter: every stage runs through this scheduler (constraint #4) ----
+# frequency is expressed as `every: N` meaning run once every N frames.
+# 1 = every frame. Heavier stage entries are present but disabled (enabled:false)
+# so adding a phase is: flip enabled + set every.
+router:
+  stages:
+    detect:
+      enabled: true
+      every: 1            # every frame — feeds everything downstream
+    track:
+      enabled: true
+      every: 1            # ByteTrack is CPU-cheap
+    pose:
+      enabled: true
+      every: 3            # every 3rd frame — was 2; saves ~17% pose overhead, still smooth
+    reid:
+      enabled: true
+      every: 15           # raised from 10 — ReID only needed on new/re-appearing tracks
+    face:
+      enabled: true
+      every: 8            # raised from 4 — buffalo_s is 5 ONNX models; biggest single FPS driver
+    fire_smoke:
+      enabled: true
+      every: 15           # 1-2 fps at 30fps source — slow-evolving event
+    smoking:
+      enabled: true
+      every: 10           # 3 fps — low urgency
+    phone:
+      enabled: true
+      every: 10           # 3 fps — low urgency. Uses a SEPARATE YOLOv8n model
+                             # instance dedicated to COCO class 67 (cell phone).
+                             # The old sharing conflict (tracker model + phone classes=[67])
+                             # is resolved: PhoneWatcherDetector always loads its own
+                             # independent YOLO instance and ignores any shared model.
+    gathering:
+      enabled: true
+      every: 30           # 1 fps — aggregate stat
+    violence:
+      enabled: true
+      every: 3            # every 3rd frame — needs temporal continuity, but cheaper than pose
+    fight:
+      enabled: true
+      every: 3            # same cadence as violence — skeleton-based, lightweight
+    object_left:
+      enabled: true
+      every: 30           # 1 fps — track stationary objects
+    par:
+      enabled: true       # Phase 5B: PAR head (using default torchvision model / fallback)
+      every: 10           # 3 fps — attribute extraction on crops
+
+    vlm_ambient:
+      enabled: true       # Phase 6: VLM ambient pass (runs on every frame)
+      every: 1            # Every frame — VLM vision encoder baseline
+    
+    vlm_escalated:
+      enabled: true       # Phase 6: VLM escalated pass (triggered by detector priority)
+      every: 1            # On-demand — runs when detector flags high priority
+
+features:
+  detection: true
+  tracking: true
+  pose: true
+  fall_detection: true
+  reid: true
+  face: true
+  identity_fusion: true
+  fire_smoke: true
+  smoking: true
+  phone: true
+  gathering: true
+  violence: false             # DISABLED: no trained weights (null in models.yaml).
+                              # ViolenceDetector with ImageNet ResNet50 + random Linear(2048,2)
+                              # head produces fabricated output. Re-enable with a real checkpoint.
+  fight: true
+  object_left: true
+  event_logging: true
+  event_buffer: true      # Phase 5F: windowed JSON flush
+  par: false                 # DISABLED: no trained weights (null in models.yaml).
+                              # PARDetector with ImageNet ResNet18 + random Linear(512,8)
+                              # head produces fabricated gender/hair/clothing output.
+                              # Re-enable with a real PAR checkpoint (e.g. PA-100K, RAP).
+  vlm: true               # Phase 6: VLM layer (ambient + escalated passes)
+  vlm_query: true         # Phase 6: Natural language query engine
+  vlm_verification: true  # Phase 6: Alert verification
+
+
+# --- Phase 5F: Windowed JSON event output ---
+output:
+  camera_id: cam_01
+  flush_interval_s: 10.0          # emit JSON blob every 10 seconds
+  json_dir: data/events_json      # written as events_cam_01_<timestamp>.json
+  max_track_age: 150              # frames to keep stale track records
+
+# --- Phase 5D: Clip Writer ---
+clip_writer:
+  enabled: true
+  clips_dir: data/clips
+  buffer_s: 5.0                   # 5 seconds of ring buffer
+  fps: 30.0
+  fourcc: mp4v
+
+perf:
+  fps_warn_below: 20    # log a warning if sustained FPS drops below this
+  vram_log_path: benchmarks/vram_log.csv
+  vram_warn_above_gb: 5 # constraint #2 — flag if exceeded
+  vram_log_every_s: 5   # how often to append a VRAM sample
+  event_db_path: data/events.db
+  keyframes_dir: data/keyframes
