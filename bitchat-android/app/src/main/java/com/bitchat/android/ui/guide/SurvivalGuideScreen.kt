@@ -3,6 +3,7 @@ package com.bitchat.android.ui.guide
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,14 +30,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import com.bitchat.android.ui.theme.BitchatFontFamily
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,17 +50,26 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.bitchat.android.R
+import com.bitchat.android.ui.LanguagePreferenceManager
+import com.bitchat.android.net.DisasterAiClient
+import com.bitchat.android.net.DisasterAiResponse
+import kotlinx.coroutines.launch
 
 /**
  * A comprehensive, offline-first Disaster Survival Guide.
@@ -67,7 +82,7 @@ data class SurvivalSection(
     val title: String,
     val emoji: String,
     val category: String,
-    val accentColor: Color,
+    val accentColor: Color? = null,
     val summary: String,
     val criticalAlert: String? = null,
     val steps: List<SurvivalStep>
@@ -344,17 +359,43 @@ fun SurvivalGuideScreen(
 ) {
     BackHandler(onBack = onBack)
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val aiClient = remember { DisasterAiClient(context) }
+
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
     var expandedSectionIds by remember { mutableStateOf(setOf("collapse", "cyclone", "firstaid")) }
 
-    val categories = remember {
-        listOf("All", "Structural", "Weather", "Geological", "Hydrological", "Thermal", "Medical", "Rescue")
+    val currentTag = remember { LanguagePreferenceManager.currentLanguageTag() }
+    val currentLang = remember(currentTag) {
+        if (currentTag.isNotBlank()) currentTag.split("-").first().lowercase() else java.util.Locale.getDefault().language.lowercase()
     }
 
-    val filteredSections = remember(searchQuery, selectedCategory) {
-        SURVIVAL_SECTIONS.filter { section ->
-            val matchesCategory = selectedCategory == "All" || section.category.equals(selectedCategory, ignoreCase = true)
+    val localizedSections = remember(context, currentLang) {
+        SurvivalGuideLocalization.getSections(context)
+    }
+
+    val categoryNames = remember(currentLang) {
+        when (currentLang) {
+            "hi" -> listOf("सभी", "ढांचागत", "मौसम", "भूगर्भीय", "जलीय", "तापीय", "चिकित्सीय", "बचाव")
+            "mr" -> listOf("सर्व", "संरचनात्मक", "हवामान", "भूगर्भीय", "जलीय", "औष्णिक", "वैद्यकीय", "बचाव")
+            "ta" -> listOf("அனைத்தும்", "கட்டமைப்பு", "வானிலை", "புவியியல்", "நீரியல்", "வெப்பவியல்", "மருத்துவம்", "மீட்பு")
+            "te" -> listOf("అన్నీ", "నిర్మాణపరమైన", "వాతావరణం", "భూగర్భపరమైన", "జలసంబంధిత", "ఉష్ణసంబంధిత", "వైద్యపరమైన", "రెస్క్యూ")
+            else -> listOf("All", "Structural", "Weather", "Geological", "Hydrological", "Thermal", "Medical", "Rescue")
+        }
+    }
+    var selectedCategoryIndex by remember { mutableStateOf(0) }
+
+    // Disaster AI State
+    var aiQuery by remember { mutableStateOf("") }
+    var isAiLoading by remember { mutableStateOf(false) }
+    var aiResponse by remember { mutableStateOf<DisasterAiResponse?>(null) }
+    var showAiSettingsDialog by remember { mutableStateOf(false) }
+    var serverUrlInput by remember { mutableStateOf(aiClient.serverUrl) }
+
+    val filteredSections = remember(searchQuery, selectedCategoryIndex, localizedSections) {
+        localizedSections.filter { section ->
+            val matchesCategory = selectedCategoryIndex == 0 || (selectedCategoryIndex < categoryNames.size && section.category.equals(categoryNames[selectedCategoryIndex], ignoreCase = true))
             val matchesQuery = if (searchQuery.isBlank()) true else {
                 val q = searchQuery.trim().lowercase()
                 section.title.lowercase().contains(q) ||
@@ -367,17 +408,19 @@ fun SurvivalGuideScreen(
         }
     }
 
+    val colorScheme = MaterialTheme.colorScheme
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0F16))
+            .background(colorScheme.background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top App Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                tonalElevation = 6.dp
+                color = colorScheme.surface,
+                tonalElevation = 2.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -392,18 +435,23 @@ fun SurvivalGuideScreen(
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to Chat"
+                                contentDescription = "Back",
+                                tint = colorScheme.onSurface
                             )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Disaster Survival Guide 🛡️",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                text = stringResource(R.string.survival_guide_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = BitchatFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colorScheme.onSurface
                             )
                             Text(
-                                text = "100% Offline Emergency Knowledge Base",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = stringResource(R.string.survival_guide_subtitle),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = BitchatFontFamily,
+                                color = colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -415,24 +463,40 @@ fun SurvivalGuideScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp),
-                        placeholder = { Text("Search disaster tip (e.g. rubble, bleed, fire)...", fontSize = 13.sp) },
+                        placeholder = {
+                            Text(
+                                stringResource(R.string.survival_guide_search_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = BitchatFontFamily,
+                                color = colorScheme.onSurfaceVariant
+                            )
+                        },
                         leadingIcon = {
-                            Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(20.dp))
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = "Search",
+                                tint = colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
                         },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Filled.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.Filled.Clear,
+                                        contentDescription = "Clear",
+                                        tint = colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         },
                         singleLine = true,
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            focusedBorderColor = colorScheme.primary,
+                            unfocusedBorderColor = colorScheme.outline
                         )
                     )
 
@@ -444,15 +508,23 @@ fun SurvivalGuideScreen(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        categories.forEach { cat ->
+                        categoryNames.forEachIndexed { idx, cat ->
                             FilterChip(
-                                selected = selectedCategory == cat,
-                                onClick = { selectedCategory = cat },
-                                label = { Text(cat, fontSize = 12.sp) },
-                                shape = CircleShape,
+                                selected = selectedCategoryIndex == idx,
+                                onClick = { selectedCategoryIndex = idx },
+                                label = {
+                                    Text(
+                                        cat,
+                                        fontFamily = BitchatFontFamily,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                shape = RoundedCornerShape(8.dp),
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                    selectedContainerColor = colorScheme.secondaryContainer,
+                                    selectedLabelColor = colorScheme.onSecondaryContainer,
+                                    containerColor = colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    labelColor = colorScheme.onSurfaceVariant
                                 )
                             )
                         }
@@ -469,34 +541,261 @@ fun SurvivalGuideScreen(
                     top = 10.dp,
                     bottom = 24.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Quick SOS banner
                 item(key = "quick_banner") {
-                    Card(
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFB71C1C).copy(alpha = 0.22f)
-                        )
+                        shape = RoundedCornerShape(10.dp),
+                        color = colorScheme.errorContainer,
+                        border = BorderStroke(1.dp, colorScheme.error.copy(alpha = 0.35f))
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🚨", fontSize = 28.sp)
-                            Spacer(Modifier.width(12.dp))
+                            Text("🚨", fontSize = 22.sp)
+                            Spacer(Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "In an active life-or-death crisis?",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFFFF8A80)
+                                    text = stringResource(R.string.survival_guide_quick_crisis),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontFamily = BitchatFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorScheme.onErrorContainer
                                 )
                                 Text(
-                                    text = "Tap the red SOS button on the chat bar to broadcast your GPS beacon over the mesh.",
+                                    text = stringResource(R.string.survival_guide_quick_crisis_desc),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                                    fontFamily = BitchatFontFamily,
+                                    color = colorScheme.onErrorContainer.copy(alpha = 0.85f)
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // Interactive Disaster AI Assistant (Qwen2.5-1.5B + SQLite)
+                item(key = "disaster_ai_assistant") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, colorScheme.outlineVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.survival_guide_ai_title),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontFamily = BitchatFontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.survival_guide_ai_subtitle),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = BitchatFontFamily,
+                                        color = colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        serverUrlInput = aiClient.serverUrl
+                                        showAiSettingsDialog = true
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Settings,
+                                        contentDescription = "Server Settings",
+                                        tint = colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Query input row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = aiQuery,
+                                    onValueChange = { aiQuery = it },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = {
+                                        Text(
+                                            stringResource(R.string.survival_guide_ai_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = BitchatFontFamily,
+                                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(8.dp),
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = colorScheme.primary,
+                                        unfocusedBorderColor = colorScheme.outline
+                                    )
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        if (aiQuery.isNotBlank() && !isAiLoading) {
+                                            isAiLoading = true
+                                            coroutineScope.launch {
+                                                aiResponse = aiClient.askDisasterAi(aiQuery, language = currentLang)
+                                                isAiLoading = false
+                                            }
+                                        }
+                                    },
+                                    enabled = aiQuery.isNotBlank() && !isAiLoading,
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colorScheme.primary,
+                                        contentColor = colorScheme.onPrimary
+                                    )
+                                ) {
+                                    if (isAiLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = "Ask",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Quick query suggestions (localized)
+                            val quickSuggestions = remember(currentLang) {
+                                when (currentLang) {
+                                    "hi" -> listOf("मलबे में फंसे हैं", "चक्रवात की आंख", "बाढ़ का पानी शुद्ध करना", "गंभीर रक्तस्राव")
+                                    "mr" -> listOf("ढिगाऱ्याखाली अडकलो", "चक्रीवादळाचा डोळा", "पाणी शुद्ध करणे", "गंभीर रक्तस्त्राव")
+                                    "ta" -> listOf("இடிபாடுகளில் சிக்கினால்", "புயலின் மையம்", "குடிநீர் சுத்திகரிப்பு", "இரத்தப்போக்கு கட்டுப்பாடு")
+                                    "te" -> listOf("శిథిలాల్లో చిక్కుకుంటే", "తుఫాను కన్ను", "నీటి శుద్ధీకరణ", "తీవ్ర రక్తస్రావం")
+                                    else -> listOf("Trapped in rubble", "Cyclone eye calm", "Purify flood water", "Severe bleeding")
+                                }
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                quickSuggestions.forEach { suggestion ->
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = colorScheme.surface,
+                                        border = BorderStroke(1.dp, colorScheme.outlineVariant),
+                                        modifier = Modifier.clickable {
+                                            aiQuery = suggestion
+                                            isAiLoading = true
+                                            coroutineScope.launch {
+                                                aiResponse = aiClient.askDisasterAi(suggestion, language = currentLang)
+                                                isAiLoading = false
+                                            }
+                                        }
+                                    ) {
+                                        Text(
+                                            text = suggestion,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = BitchatFontFamily,
+                                            color = colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Response display
+                            aiResponse?.let { resp ->
+                                Spacer(Modifier.height(10.dp))
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = colorScheme.surface,
+                                    border = BorderStroke(1.dp, colorScheme.outlineVariant)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (resp.isOfflineFallback) "Offline Fallback" else "Qwen2.5-1.5B (Local)",
+                                                fontFamily = BitchatFontFamily,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colorScheme.primary
+                                            )
+                                            TextButton(
+                                                onClick = { aiResponse = null },
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Text(
+                                                    "Dismiss",
+                                                    fontFamily = BitchatFontFamily,
+                                                    fontSize = 11.sp,
+                                                    color = colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        resp.criticalWarning?.let { warn ->
+                                            Spacer(Modifier.height(6.dp))
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = colorScheme.errorContainer
+                                            ) {
+                                                Text(
+                                                    text = "⚠️ $warn",
+                                                    modifier = Modifier.padding(8.dp),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontFamily = BitchatFontFamily,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = colorScheme.onErrorContainer
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            text = resp.answer,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = BitchatFontFamily,
+                                            color = colorScheme.onSurface,
+                                            lineHeight = 18.sp
+                                        )
+
+                                        resp.matchedProtocol?.let { proto ->
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                text = "Protocol: $proto",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = BitchatFontFamily,
+                                                color = colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -513,7 +812,8 @@ fun SurvivalGuideScreen(
                             Text(
                                 "No survival tips matched your search.\nTry searching for 'earthquake', 'bleed', 'fire', or 'water'.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = BitchatFontFamily,
+                                color = colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
@@ -523,15 +823,13 @@ fun SurvivalGuideScreen(
                 items(filteredSections, key = { it.id }) { section ->
                     val isExpanded = section.id in expandedSectionIds
 
-                    Card(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .animateContentSize(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        color = colorScheme.surface,
+                        border = BorderStroke(1.dp, colorScheme.outlineVariant)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             // Section Header
@@ -545,34 +843,30 @@ fun SurvivalGuideScreen(
                                             expandedSectionIds + section.id
                                         }
                                     }
-                                    .padding(14.dp),
+                                    .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = section.accentColor.copy(alpha = 0.18f),
-                                    modifier = Modifier.size(46.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(section.emoji, fontSize = 24.sp)
-                                    }
-                                }
-                                Spacer(Modifier.width(12.dp))
+                                Text(section.emoji, fontSize = 22.sp)
+                                Spacer(Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = section.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontFamily = BitchatFontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = colorScheme.onSurface
                                     )
                                     Text(
                                         text = section.summary,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        fontFamily = BitchatFontFamily,
+                                        color = colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Icon(
                                     imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                                     contentDescription = if (isExpanded) "Collapse" else "Expand",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = colorScheme.onSurfaceVariant
                                 )
                             }
 
@@ -581,29 +875,24 @@ fun SurvivalGuideScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(start = 14.dp, end = 14.dp, bottom = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     // Critical Alert Callout
                                     if (section.criticalAlert != null) {
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Color(0xFFD32F2F).copy(alpha = 0.15f),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.4f)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = colorScheme.errorContainer,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Row(
+                                            Text(
+                                                text = "⚠️ ${section.criticalAlert}",
                                                 modifier = Modifier.padding(10.dp),
-                                                verticalAlignment = Alignment.Top
-                                            ) {
-                                                Text("⚠️", fontSize = 18.sp)
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(
-                                                    text = section.criticalAlert,
-                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                                    color = Color(0xFFFF8A80)
-                                                )
-                                            }
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = BitchatFontFamily,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = colorScheme.onErrorContainer
+                                            )
                                         }
                                     }
 
@@ -613,16 +902,18 @@ fun SurvivalGuideScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .background(
-                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                                    RoundedCornerShape(12.dp)
+                                                    colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                                    RoundedCornerShape(8.dp)
                                                 )
-                                                .padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                .padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Text(
-                                                text = "▶ ${step.phase}",
-                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = section.accentColor
+                                                text = step.phase,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontFamily = BitchatFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colorScheme.primary
                                             )
                                             step.tips.forEach { tip ->
                                                 Row(
@@ -631,14 +922,17 @@ fun SurvivalGuideScreen(
                                                 ) {
                                                     Text(
                                                         "•",
-                                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontFamily = BitchatFontFamily,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = colorScheme.primary,
                                                         modifier = Modifier.padding(end = 6.dp)
                                                     )
                                                     Text(
                                                         text = tip,
                                                         style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                                                        fontFamily = BitchatFontFamily,
+                                                        color = colorScheme.onSurface,
                                                         lineHeight = 18.sp
                                                     )
                                                 }
@@ -661,14 +955,76 @@ fun SurvivalGuideScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "All protocols compiled for offline disaster emergency reference. Stay safe and assist others.",
+                            stringResource(R.string.survival_guide_disclaimer),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            fontFamily = BitchatFontFamily,
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
             }
         }
+
+        // Server URL configuration dialog
+        if (showAiSettingsDialog) {
+            AlertDialog(
+                onDismissRequest = { showAiSettingsDialog = false },
+                title = {
+                    Text(
+                        "Disaster AI Server Config",
+                        fontFamily = BitchatFontFamily,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            "Enter the address of your local machine running Qwen2.5-1.5B (port 8800):",
+                            fontSize = 12.sp,
+                            fontFamily = BitchatFontFamily,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = serverUrlInput,
+                            onValueChange = { serverUrlInput = it },
+                            label = { Text("Server URL", fontFamily = BitchatFontFamily) },
+                            placeholder = { Text("http://192.168.1.xxx:8800", fontFamily = BitchatFontFamily) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Default for Android Emulator: http://10.0.2.2:8800. For physical phone, use laptop's local Wi-Fi IP.",
+                            fontSize = 11.sp,
+                            fontFamily = BitchatFontFamily,
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            aiClient.serverUrl = serverUrlInput
+                            showAiSettingsDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorScheme.primary,
+                            contentColor = colorScheme.onPrimary
+                        )
+                    ) {
+                        Text("Save", fontFamily = BitchatFontFamily)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAiSettingsDialog = false }) {
+                        Text("Cancel", fontFamily = BitchatFontFamily, color = colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        }
     }
 }
+

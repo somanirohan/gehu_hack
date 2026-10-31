@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.model.Role
+import com.bitchat.android.model.localizedName
 
 /**
  * Emergency-response role filter row. Renders one chip per consumer role plus an
@@ -57,7 +58,7 @@ fun RoleFilterRow(
         FilterChip(
             selected = selectedRoles.isEmpty(),
             onClick = onClearAll,
-            label = { Text(Role.displayLabel(Role.UNSET)) },
+            label = { Text(com.bitchat.android.model.Role.UNSET.localizedName()) },
             colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = colorScheme.primary,
                 selectedLabelColor = colorScheme.onPrimary
@@ -70,7 +71,7 @@ fun RoleFilterRow(
             FilterChip(
                 selected = role in selectedRoles,
                 onClick = { onToggle(role) },
-                label = { Text(Role.displayLabel(role), maxLines = 1) },
+                label = { Text(role.localizedName(), maxLines = 1) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = roleAccent(role, colorScheme.primary),
                     selectedLabelColor = Color.White

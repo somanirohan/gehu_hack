@@ -628,4 +628,68 @@
   <string name="about_app_language">App language</string>
   <string name="about_system_default">System default</string>
   <string name="about_select_language">Select language</string>
+
+  <!-- Disaster Survival Guide & AI strings -->
+  <string name="survival_guide_title">Disaster Survival Guide</string>
+  <string name="survival_guide_subtitle">Offline Emergency Knowledge Base</string>
+  <string name="survival_guide_search_hint">Search disaster tips (e.g. rubble, bleed, fire)...</string>
+  <string name="survival_guide_quick_crisis">In an active life-or-death crisis?</string>
+  <string name="survival_guide_quick_crisis_desc">Follow primary protocols below or activate emergency SOS beacon immediately.</string>
+  <string name="survival_guide_ai_title">AI Disaster Assistant</string>
+  <string name="survival_guide_ai_subtitle">Ask questions about offline survival, first aid, or protocols</string>
+  <string name="survival_guide_ai_hint">Ask survival question (e.g., How to purify water?)</string>
+  <string name="survival_guide_ai_ask">Ask AI</string>
+  <string name="survival_guide_ai_thinking">Analyzing survival database...</string>
+  <string name="survival_guide_ai_source">Source Protocol:</string>
+  <string name="survival_guide_ai_server_config">AI Server Config</string>
+  <!-- Node Roles -->
+  <string name="role_all">All</string>
+  <string name="role_civilian">Civilian</string>
+  <string name="role_ambulance">Ambulance</string>
+  <string name="role_fire">Fire</string>
+  <string name="role_gov">Gov</string>
+  <string name="role_admin">Admin</string>
+  <string name="role_shelter">Shelter</string>
+  <string name="role_drone">Drone</string>
+  <string name="role_rescue">Rescue</string>
+
+  <!-- Emergency Preparedness & Roles in About -->
+  <string name="about_role_section">Role</string>
+  <string name="about_emergency_preparedness">Emergency Preparedness</string>
+  <string name="about_disaster_survival_guide">Disaster Survival Guide</string>
+  <string name="about_survival_guide_desc">Offline protocols for earthquakes, cyclones, landslides, and first-aid</string>
+  <string name="about_view_action">View ›</string>
+
+  <!-- Tactical Map -->
+  <string name="map_tactical_title">Tactical Map</string>
+  <string name="map_gps_prefix">GPS:</string>
+  <string name="map_locating">Locating...</string>
+  <string name="map_active_nodes">active nodes</string>
+  <string name="map_status_live">Live</string>
+  <string name="map_status_offline">Offline</string>
+  <string name="map_my_location">My location</string>
+  <string name="map_zoom_in">Zoom In</string>
+  <string name="map_zoom_out">Zoom Out</string>
+  <string name="map_back_to_chat">Back to Chat</string>
+
+  <!-- Shelter / SOS Beacon -->
+  <string name="shelter_register_node_format">Register %1$s %2$s node</string>
+  <string name="shelter_register_sos_beacon">Register SOS Beacon 🆘</string>
+  <string name="shelter_auto_fill_desc">Auto-filled with your current GPS. Edit to override or skip cell coverage — use it to plant a static staging point.</string>
+  <string name="shelter_publish_node_location">Publish a node from your current location</string>
+  <string name="shelter_publish_sos_beacon">Publish SOS beacon</string>
+  <string name="shelter_name_hint">Name (e.g. RS Puram Staging)</string>
+  <string name="shelter_latitude">Latitude</string>
+  <string name="shelter_longitude">Longitude</string>
+  <string name="shelter_use_my_location">Use my location</string>
+  <string name="shelter_role_sos_civilian">Role: 🆘 SOS Beacon (civilian)</string>
+  <string name="shelter_role_format">Role: %1$s %2$s</string>
+  <string name="shelter_capacity_hint">Capacity (people)</string>
+  <string name="shelter_verified">verified</string>
+  <string name="shelter_unverified">unverified</string>
+  <string name="shelter_delete_action">Delete</string>
+  <string name="shelter_publish_gossip">Publish + Gossip</string>
+  <string name="shelter_send_sos_beacon">🆘 Send SOS Beacon</string>
+  <string name="shelter_open_map">Open Map</string>
+  <string name="survival_guide_disclaimer">All protocols compiled for offline disaster emergency reference.</string>
 </resources>

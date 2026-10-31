@@ -1,6 +1,11 @@
 package com.bitchat.android.model
 
+import android.content.Context
 import android.os.Parcelable
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.bitchat.android.R
 import kotlinx.parcelize.Parcelize
 
 /**
@@ -24,21 +29,47 @@ enum class Role(val value: UByte) : Parcelable {
     DRONE(0x07u),
     RESCUE(0x08u);
 
+    @get:StringRes
+    val labelResId: Int
+        get() = stringRes(this)
+
     companion object {
         fun fromValue(value: UByte): Role =
             values().firstOrNull { it.value == value } ?: UNSET
 
+        @StringRes
+        fun stringRes(role: Role): Int = when (role) {
+            UNSET -> R.string.role_all
+            CIVILIAN -> R.string.role_civilian
+            AMBULANCE -> R.string.role_ambulance
+            ADMIN -> R.string.role_admin
+            SHELTER -> R.string.role_shelter
+            DRONE -> R.string.role_drone
+            RESCUE -> R.string.role_rescue
+            FIRE -> R.string.role_fire
+            GOV -> R.string.role_gov
+        }
+
         /** Visible label used by the role-chip filter row and profile selector. */
-        fun displayLabel(role: Role): String = when (role) {
-            UNSET -> "All"
-            CIVILIAN -> "Civilian"
-            AMBULANCE -> "Ambulance"
-            ADMIN -> "Admin"
-            SHELTER -> "Shelter"
-            DRONE -> "Drone"
-            RESCUE -> "Rescue"
-            FIRE -> "Fire"
-            GOV -> "Gov"
+        fun displayLabel(role: Role, context: Context? = null): String {
+            if (context != null) {
+                return context.getString(stringRes(role))
+            }
+            return when (role) {
+                UNSET -> "All"
+                CIVILIAN -> "Civilian"
+                AMBULANCE -> "Ambulance"
+                ADMIN -> "Admin"
+                SHELTER -> "Shelter"
+                DRONE -> "Drone"
+                RESCUE -> "Rescue"
+                FIRE -> "Fire"
+                GOV -> "Gov"
+            }
         }
     }
 }
+
+/** Composable helper to get localized role name. */
+@Composable
+fun Role.localizedName(): String = stringResource(Role.stringRes(this))

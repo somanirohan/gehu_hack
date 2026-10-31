@@ -31,13 +31,27 @@ object ThemePreferenceManager {
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val saved = prefs.getString(KEY_THEME, ThemePreference.Light.name)
-        _themeFlow.value = runCatching { ThemePreference.valueOf(saved!!) }.getOrDefault(ThemePreference.Light)
+        val pref = runCatching { ThemePreference.valueOf(saved!!) }.getOrDefault(ThemePreference.Light)
+        _themeFlow.value = pref
+        applyNightMode(pref)
     }
 
     fun set(context: Context, preference: ThemePreference) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_THEME, preference.name).apply()
         _themeFlow.value = preference
+        applyNightMode(preference)
+    }
+
+    fun applyNightMode(preference: ThemePreference) {
+        val mode = when (preference) {
+            ThemePreference.Light -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+            ThemePreference.Dark -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+            ThemePreference.System -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        if (androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode() != mode) {
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
+        }
     }
 
     /** Helper to easily toggle theme later when dark mode toggle button is added */

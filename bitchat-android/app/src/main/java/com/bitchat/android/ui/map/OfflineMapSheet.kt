@@ -54,8 +54,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
+import com.bitchat.android.R
 import com.bitchat.android.model.Role
 import com.bitchat.android.model.Shelter
 import com.bitchat.android.model.ShelterStatus
@@ -376,19 +378,19 @@ fun OfflineMapScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back to Chat"
+                            contentDescription = stringResource(R.string.map_back_to_chat)
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Tactical Map",
+                            text = stringResource(R.string.map_tactical_title),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                         val locLabel = livePosition?.let {
                             "${"%.4f".format(it.lat)}, ${"%.4f".format(it.lon)}"
-                        } ?: "Locating..."
+                        } ?: stringResource(R.string.map_locating)
                         Text(
-                            text = "GPS: $locLabel · $totalNodes active nodes",
+                            text = "${stringResource(R.string.map_gps_prefix)} $locLabel · $totalNodes ${stringResource(R.string.map_active_nodes)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -413,7 +415,7 @@ fun OfflineMapScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasLocationPermission) "Live" else "Offline",
+                                text = if (hasLocationPermission) stringResource(R.string.map_status_live) else stringResource(R.string.map_status_offline),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (hasLocationPermission) Color(0xFF4CAF50) else Color(0xFFF44336),
                                 fontWeight = FontWeight.SemiBold
@@ -430,11 +432,11 @@ fun OfflineMapScreen(
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    RoleSummaryChip(emoji = "👤", label = "Civilian", count = civilianCount, color = Color(0xFF43A047))
-                    RoleSummaryChip(emoji = "🚑", label = "Ambulance", count = ambulanceCount, color = Color(0xFFE53935))
-                    RoleSummaryChip(emoji = "🏠", label = "Shelter", count = shelterCount, color = Color(0xFF00ACC1))
-                    RoleSummaryChip(emoji = "🛸", label = "Drone", count = droneCount, color = Color(0xFF3949AB))
-                    RoleSummaryChip(emoji = "⛑️", label = "Rescue", count = rescueCount, color = Color(0xFFFF6F00))
+                    RoleSummaryChip(emoji = "👤", label = stringResource(R.string.role_civilian), count = civilianCount, color = Color(0xFF43A047))
+                    RoleSummaryChip(emoji = "🚑", label = stringResource(R.string.role_ambulance), count = ambulanceCount, color = Color(0xFFE53935))
+                    RoleSummaryChip(emoji = "🏠", label = stringResource(R.string.role_shelter), count = shelterCount, color = Color(0xFF00ACC1))
+                    RoleSummaryChip(emoji = "🛸", label = stringResource(R.string.role_drone), count = droneCount, color = Color(0xFF3949AB))
+                    RoleSummaryChip(emoji = "⛑️", label = stringResource(R.string.role_rescue), count = rescueCount, color = Color(0xFFFF6F00))
                 }
             }
         }
@@ -455,7 +457,7 @@ fun OfflineMapScreen(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                     contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Zoom In", modifier = Modifier.size(22.dp))
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.map_zoom_in), modifier = Modifier.size(22.dp))
                 }
                 FloatingActionButton(
                     onClick = { mapView?.controller?.zoomOut() },
@@ -464,7 +466,7 @@ fun OfflineMapScreen(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                     contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
-                    Icon(Icons.Filled.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(22.dp))
+                    Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.map_zoom_out), modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -485,7 +487,7 @@ fun OfflineMapScreen(
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(16.dp)
             ) {
-                Icon(Icons.Filled.MyLocation, contentDescription = "My location")
+                Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.map_my_location))
             }
         }
     }

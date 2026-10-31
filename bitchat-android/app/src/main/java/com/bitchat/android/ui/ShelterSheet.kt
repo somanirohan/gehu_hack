@@ -45,8 +45,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
+import com.bitchat.android.R
 import com.bitchat.android.model.Role
+import com.bitchat.android.model.localizedName
 import com.bitchat.android.model.Shelter
 import com.bitchat.android.model.ShelterStatus
 import com.bitchat.android.services.AppStateStore
@@ -152,12 +155,12 @@ fun ShelterSheet(
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Text(
-                if (isResponder) "Register ${roleEmoji(localRole)} ${Role.displayLabel(localRole)} node" else "Register SOS Beacon 🆘",
+                if (isResponder) stringResource(R.string.shelter_register_node_format, roleEmoji(localRole), localRole.localizedName()) else stringResource(R.string.shelter_register_sos_beacon),
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Auto-filled with your current GPS. Edit to override or skip cell coverage — use it to plant a static staging point.",
+                stringResource(R.string.shelter_auto_fill_desc),
                 style = MaterialTheme.typography.bodySmall
             )
             Spacer(Modifier.height(12.dp))
@@ -187,14 +190,15 @@ fun ShelterSheet(
                                     " · ${formatDistance(arr[0])}"
                                 }
                             }
+                            val verLabel = if (vs.verified) stringResource(R.string.shelter_verified) else stringResource(R.string.shelter_unverified)
                             Text(
-                                "${roleEmoji(s.role)} cap ${s.capacity} · ${s.status.name.lowercase()}$distLabel · ${if (vs.verified) "verified" else "unverified"}",
+                                "${roleEmoji(s.role)} cap ${s.capacity} · ${s.status.name.lowercase()}$distLabel · $verLabel",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (vs.verified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                             )
                         }
                         IconButton(onClick = { onDeleteShelter(s) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.shelter_delete_action))
                         }
                     }
                 }
@@ -202,12 +206,12 @@ fun ShelterSheet(
 
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
 
-            Text(if (isResponder) "Publish a node from your current location" else "Publish SOS beacon", style = MaterialTheme.typography.titleSmall)
+            Text(if (isResponder) stringResource(R.string.shelter_publish_node_location) else stringResource(R.string.shelter_publish_sos_beacon), style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Name (e.g. RS Puram Staging)") },
+                label = { Text(stringResource(R.string.shelter_name_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -216,7 +220,7 @@ fun ShelterSheet(
                 OutlinedTextField(
                     value = lat,
                     onValueChange = { lat = it; userEditedPosition = true },
-                    label = { Text("Latitude") },
+                    label = { Text(stringResource(R.string.shelter_latitude)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.weight(1f)
@@ -225,20 +229,20 @@ fun ShelterSheet(
                 OutlinedTextField(
                     value = lon,
                     onValueChange = { lon = it; userEditedPosition = true },
-                    label = { Text("Longitude") },
+                    label = { Text(stringResource(R.string.shelter_longitude)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = { fillLocation() }) {
-                    Icon(Icons.Filled.MyLocation, contentDescription = "Use my location")
+                    Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.shelter_use_my_location))
                 }
             }
             Spacer(Modifier.height(8.dp))
             if (!isResponder) {
-                Text("Role: 🆘 SOS Beacon (civilian)", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.shelter_role_sos_civilian), style = MaterialTheme.typography.bodySmall)
             } else {
-                Text("Role: ${roleEmoji(localRole)} ${Role.displayLabel(localRole)}", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.shelter_role_format, roleEmoji(localRole), localRole.localizedName()), style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(8.dp))
             Row(
@@ -257,7 +261,7 @@ fun ShelterSheet(
             OutlinedTextField(
                 value = capacity,
                 onValueChange = { capacity = it.filter { c -> c.isDigit() } },
-                label = { Text("Capacity (people)") },
+                label = { Text(stringResource(R.string.shelter_capacity_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
@@ -276,8 +280,8 @@ fun ShelterSheet(
                         name = ""
                     },
                     enabled = lat.isNotBlank() && lon.isNotBlank()
-                ) { Text(if (isResponder) "Publish + Gossip" else "🆘 Send SOS Beacon") }
-                Button(onClick = onOpenMap) { Text("Open Map") }
+                ) { Text(if (isResponder) stringResource(R.string.shelter_publish_gossip) else stringResource(R.string.shelter_send_sos_beacon)) }
+                Button(onClick = onOpenMap) { Text(stringResource(R.string.shelter_open_map)) }
             }
             Spacer(Modifier.height(16.dp))
         }

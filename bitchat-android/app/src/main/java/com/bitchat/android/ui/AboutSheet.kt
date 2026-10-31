@@ -436,7 +436,7 @@ fun AboutSheet(
                         item(key = "role") {
                             val localRole by viewModel.localRole.collectAsStateWithLifecycle()
                             Column {
-                                AboutSectionLabel(text = "Role")
+                                AboutSectionLabel(text = stringResource(R.string.about_role_section))
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -464,7 +464,7 @@ fun AboutSheet(
                                         ) {
                                             profileRoles.take(3).forEach { role ->
                                                 ThemeChip(
-                                                    label = com.bitchat.android.model.Role.displayLabel(role),
+                                                    label = stringResource(com.bitchat.android.model.Role.stringRes(role)),
                                                     selected = localRole == role,
                                                     onClick = { viewModel.setLocalRole(role) },
                                                     modifier = Modifier.weight(1f)
@@ -477,7 +477,7 @@ fun AboutSheet(
                                         ) {
                                             profileRoles.drop(3).forEach { role ->
                                                 ThemeChip(
-                                                    label = com.bitchat.android.model.Role.displayLabel(role),
+                                                    label = stringResource(com.bitchat.android.model.Role.stringRes(role)),
                                                     selected = localRole == role,
                                                     onClick = { viewModel.setLocalRole(role) },
                                                     modifier = Modifier.weight(1f)
@@ -492,7 +492,7 @@ fun AboutSheet(
 
                     item(key = "survival_guide") {
                         Column {
-                            AboutSectionLabel(text = "Emergency Preparedness")
+                            AboutSectionLabel(text = stringResource(R.string.about_emergency_preparedness))
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -511,16 +511,16 @@ fun AboutSheet(
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            "Disaster Survival Guide",
+                                            stringResource(R.string.about_disaster_survival_guide),
                                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
                                         )
                                         Text(
-                                            "Offline protocols for earthquakes, cyclones, landslides, and first-aid",
+                                            stringResource(R.string.about_survival_guide_desc),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    Text("View ›", style = MaterialTheme.typography.labelMedium, color = colorScheme.primary)
+                                    Text(stringResource(R.string.about_view_action), style = MaterialTheme.typography.labelMedium, color = colorScheme.primary)
                                 }
                             }
                         }
@@ -534,50 +534,125 @@ fun AboutSheet(
 
                         Column {
                             AboutSectionLabel(text = stringResource(R.string.about_language))
-                            BoxWithConstraints(
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = AboutHorizontalPadding),
+                                color = colorScheme.surface,
+                                shape = AboutCardShape,
                             ) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = colorScheme.surface,
-                                    shape = AboutCardShape,
-                                ) {
-                                    LanguageSettingsRow(
-                                        selectedLanguageName = selectedLanguageName,
-                                        onClick = { showLanguagePicker = true },
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    // Quick Language Chips for English, Hindi, Marathi, Tamil, Telugu
+                                    val quickLanguages = listOf(
+                                        "en" to "English",
+                                        "hi" to "हिंदी",
+                                        "mr" to "मराठी",
+                                        "ta" to "தமிழ்",
+                                        "te" to "తెలుగు"
                                     )
-                                }
-                                DropdownMenu(
-                                    expanded = showLanguagePicker,
-                                    onDismissRequest = { showLanguagePicker = false },
-                                    modifier = Modifier.width(maxWidth),
-                                ) {
-                                    LanguageMenuItem(
-                                        label = stringResource(R.string.about_system_default),
-                                        selected = selectedLanguageTag.isEmpty(),
-                                        onClick = {
-                                            showLanguagePicker = false
-                                            if (selectedLanguageTag.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        quickLanguages.take(3).forEach { (tag, name) ->
+                                            ThemeChip(
+                                                label = name,
+                                                selected = selectedLanguageTag == tag,
+                                                onClick = {
+                                                    selectedLanguageTag = tag
+                                                    LanguagePreferenceManager.setLanguage(tag)
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        quickLanguages.drop(3).forEach { (tag, name) ->
+                                            ThemeChip(
+                                                label = name,
+                                                selected = selectedLanguageTag == tag,
+                                                onClick = {
+                                                    selectedLanguageTag = tag
+                                                    LanguagePreferenceManager.setLanguage(tag)
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        ThemeChip(
+                                            label = stringResource(R.string.about_system_default),
+                                            selected = selectedLanguageTag.isEmpty(),
+                                            onClick = {
                                                 selectedLanguageTag = ""
                                                 LanguagePreferenceManager.setLanguage("")
-                                            }
-                                        },
-                                    )
-                                    HorizontalDivider()
-                                    supportedLanguages.forEach { language ->
-                                        LanguageMenuItem(
-                                            label = language.endonym,
-                                            selected = selectedLanguageTag == language.languageTag,
-                                            onClick = {
-                                                showLanguagePicker = false
-                                                if (language.languageTag != selectedLanguageTag) {
-                                                    selectedLanguageTag = language.languageTag
-                                                    LanguagePreferenceManager.setLanguage(language.languageTag)
-                                                }
                                             },
+                                            modifier = Modifier.weight(1f)
                                         )
+                                    }
+
+                                    Spacer(Modifier.height(10.dp))
+                                    HorizontalDivider(
+                                        thickness = 1.dp,
+                                        color = colorScheme.outlineVariant
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+
+                                    // Full dropdown selector
+                                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { showLanguagePicker = true }
+                                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.about_app_language),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = "$selectedLanguageName ▾",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = colorScheme.primary
+                                            )
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = showLanguagePicker,
+                                            onDismissRequest = { showLanguagePicker = false },
+                                            modifier = Modifier.width(maxWidth),
+                                        ) {
+                                            LanguageMenuItem(
+                                                label = stringResource(R.string.about_system_default),
+                                                selected = selectedLanguageTag.isEmpty(),
+                                                onClick = {
+                                                    showLanguagePicker = false
+                                                    if (selectedLanguageTag.isNotEmpty()) {
+                                                        selectedLanguageTag = ""
+                                                        LanguagePreferenceManager.setLanguage("")
+                                                    }
+                                                },
+                                            )
+                                            HorizontalDivider()
+                                            supportedLanguages.forEach { language ->
+                                                LanguageMenuItem(
+                                                    label = language.endonym,
+                                                    selected = selectedLanguageTag == language.languageTag,
+                                                    onClick = {
+                                                        showLanguagePicker = false
+                                                        if (language.languageTag != selectedLanguageTag) {
+                                                            selectedLanguageTag = language.languageTag
+                                                            LanguagePreferenceManager.setLanguage(language.languageTag)
+                                                        }
+                                                    },
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

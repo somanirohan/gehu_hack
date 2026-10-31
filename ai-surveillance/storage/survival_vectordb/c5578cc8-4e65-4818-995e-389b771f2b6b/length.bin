@@ -1,0 +1,2 @@
+invalid type: string "Disaster: Emergency Trauma & First Aid\nPhase: Unconscious Patient & Airway\nCategory: Medical\nWarning: Never leave an unconscious breathing person lying flat on their back; their tongue can obstruct their airway or they can aspirate vomit.\nlently without warning.\nction_metadata ADD COLUMN bool_value INTEGER;
+ALTER TABLE segment_metadata ADD COLUMN bool_valÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ

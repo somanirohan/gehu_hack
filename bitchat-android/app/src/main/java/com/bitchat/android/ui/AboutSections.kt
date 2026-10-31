@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -179,6 +180,12 @@ internal fun AboutHero(
     val colorScheme = MaterialTheme.colorScheme
     val palette = LocalBitchatPalette.current
 
+    val brandLogoColor = if (colorScheme.primary == Color(0xFFFFB3AD) || colorScheme.primary == Color.White) {
+        Color(0xFF5B92FF)
+    } else {
+        colorScheme.primary
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -188,7 +195,7 @@ internal fun AboutHero(
         Icon(
             imageVector = BitChatIcon,
             contentDescription = null,
-            tint = colorScheme.primary,
+            tint = brandLogoColor,
             modifier = Modifier.size(64.dp)
         )
 
@@ -202,7 +209,7 @@ internal fun AboutHero(
             // Monospace at display size leaves too much air between glyphs; pull it in slightly
             // so the wordmark reads as a single unit.
             letterSpacing = (-0.5).sp,
-            color = colorScheme.primary
+            color = brandLogoColor
         )
 
         Spacer(modifier = Modifier.height(4.dp))

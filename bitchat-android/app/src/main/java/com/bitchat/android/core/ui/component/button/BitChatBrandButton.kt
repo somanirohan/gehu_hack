@@ -52,6 +52,12 @@ fun BitChatBrandButton(
     // A plain Box rather than an IconButton: IconButton insists on drawing a ripple, which was the
     // only press background left in the header once every other control moved to scale-only
     // feedback.
+    val resolvedTint = if (tint == Color(0xFFFFB3AD) || tint == Color.White) {
+        Color(0xFF5B92FF)
+    } else {
+        tint
+    }
+
     Box(
         modifier = modifier
             .clip(CircleShape)
@@ -83,7 +89,7 @@ fun BitChatBrandButton(
         Icon(
             imageVector = BitChatIcon,
             contentDescription = contentDescription,
-            tint = tint,
+            tint = resolvedTint,
             modifier = Modifier
                 .size(iconSize)
                 .scale(pressScale),

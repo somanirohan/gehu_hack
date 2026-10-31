@@ -20,15 +20,15 @@ import androidx.compose.ui.platform.LocalView
 // Standard UI semantics live in Material so stock components and custom Bitchat composables
 // share one source of truth. LocalBitchatPalette below supplies app-specific extra colors.
 internal val DarkBitchatColorScheme = darkColorScheme(
-    primary = Color(0xFFFFB3AD),
-    onPrimary = Color(0xFF68000A),
-    primaryContainer = Color(0xFFFF5451),
-    onPrimaryContainer = Color(0xFF5C0008),
-    inversePrimary = Color(0xFFB91A24),
-    secondary = Color(0xFFB4C5FF),
-    onSecondary = Color(0xFF002A78),
-    secondaryContainer = Color(0xFF0053DB),
-    onSecondaryContainer = Color(0xFFCDD7FF),
+    primary = Color(0xFF5B92FF),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF004AC6),
+    onPrimaryContainer = Color(0xFFDAE2FD),
+    inversePrimary = Color(0xFF004AC6),
+    secondary = Color(0xFFFF6B6B),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFBB0112),
+    onSecondaryContainer = Color(0xFFFFFBFF),
     tertiary = Color(0xFF4AE176),
     onTertiary = Color(0xFF003915),
     tertiaryContainer = Color(0xFF00A74B),
@@ -42,11 +42,11 @@ internal val DarkBitchatColorScheme = darkColorScheme(
     surface = Color(0xFF0B1326),
     onSurface = Color(0xFFDAE2FD),
     surfaceVariant = Color(0xFF2D3449),
-    onSurfaceVariant = Color(0xFFE4BEBA),
-    surfaceTint = Color(0xFFFFB3AD),
+    onSurfaceVariant = Color(0xFFC3C6D7),
+    surfaceTint = Color(0xFF5B92FF),
     inverseSurface = Color(0xFFDAE2FD),
     inverseOnSurface = Color(0xFF283044),
-    outline = Color(0xFFAB8986),
+    outline = Color(0xFF737686),
     outlineVariant = Color(0xFF5B403E),
     surfaceDim = Color(0xFF0B1326),
     surfaceBright = Color(0xFF31394D),
@@ -102,13 +102,14 @@ fun BitchatTheme(
 ) {
     // App-level override from ThemePreferenceManager, defaulting to Light
     val themePref by ThemePreferenceManager.themeFlow.collectAsState(initial = ThemePreference.Light)
+    val isSystemDark = isSystemInDarkTheme()
     val shouldUseDark = when (darkTheme) {
         true -> true
         false -> false
         null -> when (themePref) {
             ThemePreference.Dark -> true
             ThemePreference.Light -> false
-            ThemePreference.System -> false // Default to Light mode
+            ThemePreference.System -> isSystemDark
         }
     }
 

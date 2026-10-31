@@ -18,6 +18,9 @@ object LanguagePreferenceManager {
         AppCompatDelegate.getApplicationLocales().toLanguageTags()
 
     fun setLanguage(languageTag: String) {
+        com.bitchat.android.ui.theme.ThemePreferenceManager.applyNightMode(
+            com.bitchat.android.ui.theme.ThemePreferenceManager.themeFlow.value
+        )
         AppCompatDelegate.setApplicationLocales(
             LocaleListCompat.forLanguageTags(languageTag)
         )

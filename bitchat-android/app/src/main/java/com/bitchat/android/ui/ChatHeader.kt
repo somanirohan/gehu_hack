@@ -757,6 +757,14 @@ private fun MainHeader(
                 modifier = Modifier
                     .weight(1f)
             ) {
+                BitChatBrandButton(
+                    onClick = onTitleClick,
+                    onTripleClick = onTripleTitleClick,
+                    contentDescription = stringResource(R.string.app_name),
+                    modifier = Modifier.padding(end = 8.dp),
+                    tint = if (colorScheme.primary == Color(0xFFFFB3AD) || colorScheme.primary == Color.White) Color(0xFF5B92FF) else colorScheme.primary
+                )
+
                 Text(
                     text = stringResource(R.string.chat),
                     style = MaterialTheme.typography.titleLarge,

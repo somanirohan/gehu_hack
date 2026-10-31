@@ -1,0 +1,146 @@
+[
+  {
+    "id": "earthquake_during_shaking",
+    "disaster": "Building Collapse & Earthquake",
+    "category": "Structural",
+    "phase": "When Shaking Starts",
+    "critical_alert": "DO NOT rush outside or use elevators during tremors; falling masonry and glass cause 70% of injuries.",
+    "content": "When earthquake tremors begin, DROP, COVER, and HOLD ON immediately. Drop down onto your hands and knees under a sturdy desk or interior table. Protect your head and neck with your arms. If no desk is nearby, crouch against an interior load-bearing wall away from windows, glass, mirrors, and heavy overhead fixtures. Tuck your body tightly and hold onto your shelter until shaking stops completely.",
+    "keywords": ["earthquake", "tremor", "shaking", "drop cover hold", "desk", "indoor safety"]
+  },
+  {
+    "id": "rubble_trapped_survival",
+    "disaster": "Building Collapse & Earthquake",
+    "category": "Structural",
+    "phase": "Trapped in Rubble",
+    "critical_alert": "DO NOT ignite matches, candles, or lighters; ruptured natural gas mains can trigger fatal explosions.",
+    "content": "If trapped beneath building collapse rubble: Cover your mouth and nose with a shirt or cloth to filter lethal pulverized concrete dust and prevent suffocation. Conserve oxygen and voice: avoid continuous screaming which fills your lungs with dust and depletes breathable air. Rule of Three Acoustic Signaling: Tap 3 sharp beats on metal pipes, beams, or concrete walls using a stone or metal object, pause for 10 seconds, and repeat. Rescue geophones track rhythmic metallic taps. Only shout when you distinctly hear rescue workers or search dogs right nearby. Remain still to prevent triggering secondary collapses.",
+    "keywords": ["trapped", "rubble", "collapse", "debris", "concrete", "tapping", "rule of three", "dust", "pipes"]
+  },
+  {
+    "id": "earthquake_aftermath_gas",
+    "disaster": "Building Collapse & Earthquake",
+    "category": "Structural",
+    "phase": "Evacuation & Aftermath",
+    "critical_alert": "Check for gas leaks before using electricity: smell for sulfur or rotten eggs. If suspected, shut off main valve and leave immediately.",
+    "content": "After tremors cease, check yourself and others for injuries. Put on sturdy thick-soled shoes immediately to prevent lacerations from shattered glass and exposed rebar. Do not flip light switches or ignite flames until you verify natural gas pipes are intact. Exit via stairs, never elevators. Watch out for compromised parapets, cracked balconies, and severe aftershocks which commonly bring down weakened structures.",
+    "keywords": ["gas leak", "aftershock", "shoes", "evacuation", "stairs", "aftermath"]
+  },
+  {
+    "id": "cyclone_pre_storm",
+    "disaster": "Cyclone & Severe Storm",
+    "category": "Weather",
+    "phase": "Pre-Storm Preparation",
+    "critical_alert": "Secure loose outdoor objects: items like tin sheets, flowerpots, and bicycles become deadly airborne projectiles in 100+ km/h winds.",
+    "content": "Before a cyclone strikes: Store a minimum of 4-5 days of drinking water in sealed, clean containers (at least 3 liters per person per day). Charge mobile phones, radios, and external battery power banks; enclose them in heavy-duty waterproof plastic bags. Anchor all outdoor objects or bring them indoors. Board up windows or tape large glass panes with crisscross heavy tape to mitigate flying glass shards. Stock ready-to-eat non-perishable foods and critical prescription medications.",
+    "keywords": ["cyclone", "hurricane", "typhoon", "storm", "preparation", "water storage", "tape windows", "battery"]
+  },
+  {
+    "id": "cyclone_during_storm_eye",
+    "disaster": "Cyclone & Severe Storm",
+    "category": "Weather",
+    "phase": "During the Cyclone & Eye of Storm",
+    "critical_alert": "Beware the Eye of the Storm: A sudden calm means you are only halfway through. Destructive hurricane-force winds will reverse direction violently without warning.",
+    "content": "During hurricane-force winds: Shelter in the innermost room on the lowest floor (such as a central hallway, bathroom, or stairwell) with no exterior windows. Shut off main electrical breakers and cooking gas supply before wind peaks. If the wind suddenly drops and the sky clears, you are in the eye of the storm—do NOT go outside. The opposite storm wall will hit rapidly with reversed wind directions. Keep battery radios or Bitchat mesh open for emergency civil defense bulletins.",
+    "keywords": ["eye of storm", "calm", "wind reversal", "interior room", "breaker", "power shutoff"]
+  },
+  {
+    "id": "cyclone_post_storm_hazards",
+    "disaster": "Cyclone & Severe Storm",
+    "category": "Weather",
+    "phase": "Post-Storm Safety",
+    "critical_alert": "Never step into standing water near utility poles or fallen lines—risk of immediate electrocution.",
+    "content": "After the storm passes: Avoid standing water or puddles near utility poles, fallen wires, or submerged substations due to electrocution risk. Boil all drinking water vigorously for at least 3 minutes; storm surges and flooding frequently cross-contaminate municipal water with sewage. Inspect building roofs and foundations for structural integrity. Be vigilant for displaced venomous snakes and wildlife seeking refuge inside buildings.",
+    "keywords": ["fallen wires", "electrocution", "boil water", "snakes", "contamination"]
+  },
+  {
+    "id": "landslide_early_warning",
+    "disaster": "Landslide & Mudflow",
+    "category": "Geological",
+    "phase": "Early Warning Signs",
+    "critical_alert": "If you hear a low rumble like an approaching freight train or see trees tilting, evacuate IMMEDIATELY.",
+    "content": "Watch for early landslide warnings: Sudden muddying or drying of clean streams, trees tilting, utility poles leaning, road asphalt buckling, and sticking doors or jammed windows. A low rumbling noise that increases in volume indicates soil, mud, and boulders have mobilized uphill. In steep terrain during heavy or prolonged rainfall, treat any abnormal ground vibrations as an imminent debris flow.",
+    "keywords": ["landslide", "mudflow", "mudslide", "rumbling", "tilting trees", "cracks", "rain"]
+  },
+  {
+    "id": "landslide_evacuation_direction",
+    "disaster": "Landslide & Mudflow",
+    "category": "Geological",
+    "phase": "Immediate Evacuation",
+    "critical_alert": "Flee PERPENDICULAR to the slide path, never downhill in the direction of the flow. Mudflows reach 50 km/h and will outrun you.",
+    "content": "If a landslide or debris flow approaches: Run laterally and PERPENDICULAR to the path of the flow, heading toward higher, stable ridgelines. Never try to outrun a mudflow downhill. If driving in mountainous areas, watch for collapsed road shoulders, mud deposits on curves, and falling rock. If escape is impossible, curl into a tight ball, lock your hands firmly behind your head, and position yourself behind a large bedrock outcrop or sturdy tree facing away from the flow to protect against blunt force trauma.",
+    "keywords": ["perpendicular", "escape path", "evacuate", "curl in ball", "protect head"]
+  },
+  {
+    "id": "flood_turn_around_dont_drown",
+    "disaster": "Flash Flood & Water Surge",
+    "category": "Hydrological",
+    "phase": "Immediate Threat",
+    "critical_alert": "Turn Around, Don't Drown: Just 15 cm (6 inches) of rapid moving water knocks down an adult; 30-60 cm sweeps away vehicles.",
+    "content": "In flash floods: Never walk, swim, or drive through flooded roads, culverts, or bridges. Submerged pavement is frequently washed out beneath murky floodwaters. If your vehicle stalls in rising water, abandon it immediately and seek higher ground. Move to the highest available natural terrain or upper concrete stories of buildings. Never enter drainage channels, irrigation canals, or viaducts where suction can trap a person underwater.",
+    "keywords": ["flood", "flash flood", "water surge", "turn around dont drown", "moving water", "car stalled"]
+  },
+  {
+    "id": "flood_attic_warning_signaling",
+    "disaster": "Flash Flood & Water Surge",
+    "category": "Hydrological",
+    "phase": "Attic Warning & Rescue",
+    "critical_alert": "Attic Trap Warning: NEVER climb into a closed attic without roof access or an axe; rising water can trap you against the ceiling.",
+    "content": "When trapped by rising floodwater in a building: Move to the second story or roof. If you must enter an attic, bring an axe, crowbar, or heavy tool to smash through roof shingles to the outside. Display brightly colored tarps, sheets, or clothing on the roof so aerial helicopters, drones, and rescue boats can identify your location. Disconnect main power breakers before floodwaters touch electrical outlets. Disinfect all cuts immediately because floodwater contains virulent bacteria, sewage, and chemical runoff.",
+    "keywords": ["attic", "roof", "rescue boat", "drone", "sewage", "disinfect", "power breaker"]
+  },
+  {
+    "id": "fire_smoke_crawling",
+    "disaster": "Wildfire & Structural Fire",
+    "category": "Thermal",
+    "phase": "Smoke Survival & Evacuation",
+    "critical_alert": "Smoke kills before flames. 80% of fire casualties die from carbon monoxide and toxic smoke inhalation. CRAWL LOW.",
+    "content": "In a burning building: Crawl low on hands and knees under the smoke. The cleanest, coolest, and highest oxygen air is within 30-60 cm of the floor. Before opening any interior door, touch the door surface, frame, and brass knob with the back of your hand: if hot, DO NOT open. If opening a cool door, brace your shoulder against it and crack it open cautiously. If clothing catches fire, STOP, DROP, and ROLL immediately while covering your face with your hands.",
+    "keywords": ["fire", "smoke", "crawl low", "hot door", "carbon monoxide", "stop drop roll"]
+  },
+  {
+    "id": "fire_trapped_in_room",
+    "disaster": "Wildfire & Structural Fire",
+    "category": "Thermal",
+    "phase": "Trapped in Room",
+    "critical_alert": "Seal all cracks around doors with wet towels or clothes to block toxic smoke entry.",
+    "content": "If trapped inside a room by fire and smoke: Close the door and seal every crack around the door frame and vents using wet towels, blankets, or duct tape. Open a window slightly at the top and bottom for fresh air unless heavy smoke is blowing in from exterior flames. Hang a bright white or colored sheet out the window to signal firefighters. Fill sinks and bathtubs with water to keep cloths moist. Never use elevators during a structural fire because shafts act as smoke chimneys and electrical power often cuts out.",
+    "keywords": ["trapped room", "wet towels", "window signal", "seal door", "no elevator"]
+  },
+  {
+    "id": "firstaid_arterial_bleeding",
+    "disaster": "Emergency Trauma & First Aid",
+    "category": "Medical",
+    "phase": "Severe Bleeding Control",
+    "critical_alert": "Massive arterial bleeding can cause death in 3 minutes. Apply continuous, direct, firm pressure with both hands immediately.",
+    "content": "To stop life-threatening bleeding: Apply direct, unrelenting pressure on the wound with clean cloth, gauze, or clothing using your full body weight without lifting to check. For deep junctional wounds in the groin, neck, or armpit, pack cloth tightly into the depth of the wound cavity and push hard. For catastrophic limb hemorrhage where direct pressure fails, apply a commercial or improvised tourniquet 5-7 cm (2-3 inches) above the bleeding site (never over a joint), twist until bleeding ceases completely, and write the exact application time on the patient's forehead (e.g., T 14:30).",
+    "keywords": ["bleeding", "hemorrhage", "arterial", "tourniquet", "direct pressure", "wound packing"]
+  },
+  {
+    "id": "firstaid_airway_recovery_position",
+    "disaster": "Emergency Trauma & First Aid",
+    "category": "Medical",
+    "phase": "Unconscious Patient & Airway",
+    "critical_alert": "Never leave an unconscious breathing person lying flat on their back; their tongue can obstruct their airway or they can aspirate vomit.",
+    "content": "For unconscious breathing casualties: Place them in the Recovery Position. Roll the person onto their side, bend their upper leg at a 90-degree angle to anchor them, and place their hand under their cheek to keep the head supported. Gently tilt their chin backward to keep the airway straight and open. This position ensures the tongue cannot slip back and vomit drains freely. Monitor breathing rhythm continuously.",
+    "keywords": ["unconscious", "airway", "recovery position", "breathing", "choking", "first aid"]
+  },
+  {
+    "id": "firstaid_water_purification",
+    "disaster": "Emergency Trauma & First Aid",
+    "category": "Medical",
+    "phase": "Emergency Water Purification",
+    "critical_alert": "Never drink untreated floodwater, stagnant water, seawater, or urine. High salt or bacterial contamination causes rapid dehydration and organ failure.",
+    "content": "To purify emergency water: First pre-filter cloudy or turbid water through 4-8 layers of clean, tightly woven cotton cloth or coffee filters to remove sediment, silt, and macro-parasites. Bring the clear decanted water to a vigorous, rolling boil for at least 1 full minute (3 minutes at elevations above 2,000 meters / 6,500 feet). Boiling kills virtually all bacteria, viruses, and protozoan cysts (including Giardia and Cryptosporidium). Allow water to cool in covered, disinfected containers.",
+    "keywords": ["water purification", "boiling", "filter cloth", "drinking water", "giardia", "hydration"]
+  },
+  {
+    "id": "signaling_rule_of_three",
+    "disaster": "Offline Rescue Signaling",
+    "category": "Rescue",
+    "phase": "International Distress Rule",
+    "critical_alert": "International Distress Standard: Any signal repeated THREE times (3 whistle blasts, 3 fires, 3 flashes) signifies an emergency requiring rescue.",
+    "content": "How to signal search and rescue teams offline: 1. Acoustic: Blow a whistle in 3 loud, distinct blasts; pause 30-60 seconds to listen, then repeat. Sound carries up to 2-3 km. 2. Aerial Ground Symbols: Create large high-contrast letters on open ground using rocks, logs, or tarps (each stroke at least 3 meters long): 'V' means Require Assistance; 'X' means Require Medical Assistance; arrow '->' indicates direction of travel. 3. Flash / Mirror: Aim sunlight reflections toward rescue helicopters by sighting between two fingers held in a V-notch. 4. Digital Mesh: Hit the red SOS button in Bitchat to broadcast GPS coordinates over Bluetooth and Wi-Fi Aware to all nearby responder nodes.",
+    "keywords": ["signaling", "whistle", "rule of 3", "mirror", "ground symbols", "V", "X", "SOS beacon", "rescue"]
+  }
+]
