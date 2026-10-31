@@ -29,7 +29,9 @@ object SyncWorkScheduler {
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             "bitchat.civ.sync",
-            androidx.work.ExistingWorkPolicy.REPLACE,
+            // APPEND_OR_REPLACE: never cancel an upload already in flight; queue the
+            // next one behind it so messages that arrived mid-upload still go out.
+            androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE,
             request
         )
     }

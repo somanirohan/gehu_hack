@@ -70,6 +70,9 @@ class BitchatApplication : Application() {
         // Initialize mesh service preferences
         try { com.bitchat.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
 
+        // Civilization bridge: auto-upload new geo-tagged chats/shelters (no "Send now" needed)
+        try { com.bitchat.android.util.AutoSyncTrigger.start(this) } catch (_: Exception) { }
+
         // Proactively start the foreground service to keep mesh alive
         try { com.bitchat.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }
 
