@@ -3,13 +3,22 @@
   "label": "SOS",
   "icon": "🆘",
   "fields": [
+   "ai_summary",
    "type",
    "people",
+   "ai_urgency",
+   "ai_vulnerable",
+   "ai_injured",
+   "ai_landmarks",
+   "ai_needs",
+   "ai_reasons",
    "message",
    "sender",
    "role",
    "category_source",
-   "matched_words"
+   "rule_guess",
+   "matched_words",
+   "ai_error"
   ]
  },
  "message": {
@@ -17,10 +26,11 @@
   "icon": "💬",
   "fields": [
    "text",
+   "ai_summary",
    "sender",
    "role",
    "category_source",
-   "matched_words"
+   "ai_error"
   ]
  },
  "photo": {
@@ -34,12 +44,15 @@
   "label": "Road blocked",
   "icon": "⛔",
   "fields": [
+   "ai_summary",
    "note",
    "radius_m",
    "sender",
    "role",
    "category_source",
-   "matched_words"
+   "ai_reasons",
+   "matched_words",
+   "ai_error"
   ]
  },
  "medical_need": {

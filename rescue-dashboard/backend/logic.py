@@ -48,7 +48,7 @@ MERGE_WINDOW_MIN = 30
 # Which responder kinds can handle which incident families.
 CAPABLE = {
     "person-down": {"ambulance", "rescue"},
-    "trapped": {"rescue", "fire"},
+    "trapped": {"rescue", "fire", "boat"},  # boat: people trapped by water
     "fire": {"fire"},
     "flood": {"rescue", "boat"},
     "crowd": {"police"},
@@ -56,6 +56,8 @@ CAPABLE = {
     "missing": {"police", "drone", "rescue"},
     "other": {"rescue", "police", "ambulance", "fire", "drone", "boat"},
 }
+
+AI_URGENCY_BONUS = {"critical": 15, "high": 8}  # rule applied to the Triage Agent's reading
 
 AVG_SPEED_KMH = 25  # flooded city roads; used only for a rough ETA
 
@@ -106,7 +108,10 @@ def priority(incident: dict, at: datetime | None = None) -> tuple[int, str]:
     waited_min = max(0, (at - parse_time(incident["first_report_at"])).total_seconds() / 60)
     w_score = min(int(waited_min // 5) * 2, 15)
     v_score = 10 if incident.get("source") == "camera" else 0  # seen on camera = confirmed
-    score = min(100, t + p_score + r_score + w_score + v_score)
+    # Fixed, visible bonus when the Triage Agent read the message as life-threatening.
+    # The AI does not set the number; this rule does, and the reason line says so.
+    a_score = AI_URGENCY_BONUS.get(incident.get("ai_urgency") or "", 0)
+    score = min(100, t + p_score + r_score + w_score + v_score + a_score)
     parts = [f"{incident['type']} +{t}", f"{people} {'person' if people == 1 else 'people'} +{p_score}"]
     if r_score:
         parts.append(f"{incident['report_count']} reports +{r_score}")
@@ -114,6 +119,8 @@ def priority(incident: dict, at: datetime | None = None) -> tuple[int, str]:
         parts.append(f"waiting {int(waited_min)} min +{w_score}")
     if v_score:
         parts.append(f"camera-confirmed +{v_score}")
+    if a_score:
+        parts.append(f"AI read it as {incident['ai_urgency']} +{a_score}")
     return score, " · ".join(parts)
 
 

@@ -21,9 +21,11 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 import classify
+from agents import triage
 import main as core
 import v1
 
@@ -87,8 +89,10 @@ def _iso(ms: Optional[int]) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat(timespec="seconds")
 
 
-def to_event(inc: CivIncident, produced_at: Optional[int], drill: bool = False) -> v1.EventIn:
-    c = classify.classify(inc.content)
+def to_event(inc: CivIncident, produced_at: Optional[int], drill: bool = False,
+             reading: Optional[dict] = None) -> v1.EventIn:
+    """reading = Triage Agent result (agents.triage.read); falls back to the word rules."""
+    c = dict(reading) if reading else classify.classify(inc.content)
     if inc.category:  # chosen by the person in the app: not a guess
         cat = inc.category.strip().lower()
         if cat in ("road_block", "road_blocked", "blocked"):
@@ -107,6 +111,14 @@ def to_event(inc: CivIncident, produced_at: Optional[int], drill: bool = False) 
     held = max(0, round(((produced_at or 0) - (inc.timestamp or 0)) / 1000)) if produced_at and inc.timestamp else None
     meta: dict[str, Any] = {"drill": drill or None, "sender": inc.sender, "role": role, "category_source": c["label"],
                             "matched_words": ", ".join(c["matched"]) or None, "confidence": c["confidence"]}
+    ai = c.get("ai")
+    if ai:  # Triage Agent extras, shown on the dashboard as an AI suggestion
+        meta.update(ai_summary=ai["summary"], ai_urgency=ai["urgency"], ai_injured=ai["injured"],
+                    ai_vulnerable=", ".join(ai["vulnerable"]) or None, ai_landmarks=", ".join(ai["landmarks"]) or None,
+                    ai_needs=", ".join(ai["needs"]) or None, ai_language=ai["language"], ai_reasons=ai["reasons"],
+                    rule_guess=c.get("rule_guess"))
+    elif c.get("ai_error"):
+        meta["ai_error"] = c["ai_error"][:160]
     if c["kind"] == "sos":
         payload = {"type": c["type"], "people": c["people"] or 1, "message": text, **meta}
     elif c["kind"] == "road_block":
@@ -136,15 +148,35 @@ def _is_drill(bundle: CivBundle) -> bool:
     return bool((bundle.model_extra or {}).get("drill"))
 
 
+AI_MAX_PER_BUNDLE = 12  # the AI reads at most this many NEW messages per upload; the rest use the word rules
+
+
+def _triage_new(bundle: CivBundle) -> dict:
+    """Triage Agent on messages the server has NOT seen before (the app re-sends old ones every time)."""
+    ids = [f"bitchat-{i.id}" for i in bundle.incidents]
+    if not ids:
+        return {}
+    with core.db() as con:
+        seen = {r[0] for r in con.execute(
+            f"SELECT event_id FROM events WHERE event_id IN ({','.join('?' * len(ids))})", ids)}
+    out: dict = {}
+    for inc in bundle.incidents:
+        if f"bitchat-{inc.id}" in seen or inc.category or len(out) >= AI_MAX_PER_BUNDLE:
+            continue
+        out[inc.id] = triage.read(inc.content, inc.role)
+    return out
+
+
 @router.post("/civ-sync")
 async def civ_sync(bundle: CivBundle):
     """Receives the app's existing sync bundle. Always 2xx unless the body is invalid,
     so the phone marks the flush done; repeats are ignored."""
     results, notes, accepted = [], [], []
+    readings = await run_in_threadpool(_triage_new, bundle)
     with core.db() as con:
         for inc in bundle.incidents:
             try:
-                r, n = v1.handle_event(con, to_event(inc, bundle.produced_at, _is_drill(bundle)))
+                r, n = v1.handle_event(con, to_event(inc, bundle.produced_at, _is_drill(bundle), readings.get(inc.id)))
             except Exception as exc:  # never lose the rest of the bundle because of one bad message
                 core.write_log(con, "bitchat-sync", "sync_item_failed", None, id=inc.id, error=str(exc)[:200])
                 continue
@@ -162,6 +194,7 @@ async def civ_sync(bundle: CivBundle):
     if changed_shelters:
         notes.append(("shelters", {"changed": changed_shelters}))
     await v1._send(notes)
+    await v1._after_events(results)
     return {"ok": True, "received": len(bundle.incidents), "new": new, "duplicates": len(results) - new,
             "shelters_changed": changed_shelters, "accepted_ids": accepted}
 

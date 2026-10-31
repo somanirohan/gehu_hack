@@ -12,6 +12,8 @@ import { api, liveUpdates } from './api.js'
 import LiveLayers, { liveApi } from './LiveLayers'
 import FeedPanel from './FeedPanel'
 import CityLayers from './CityLayers'
+import PlannerPanel from './PlannerPanel'
+import RouteAlerts from './RouteAlerts'
 
 // Dehradun. Replaced by /api/v1/places once it loads (same value by default).
 const CENTER = [30.316496, 78.032188]
@@ -267,6 +269,8 @@ function Queue({
                 <span className="qtitle">
                   #{incident.id} {incident.type}
                   {incident.drill && <span className="pill drill">DRILL</span>}
+                  {incident.verification && <span className={`pill vf vf-${incident.verification}`} title="Verifier Agent">{VERDICT_LABEL[incident.verification]}</span>}
+                  {incident.ai_urgency && <span className={`pill ai u-${incident.ai_urgency}`} title="Triage Agent reading (AI suggestion)">AI · {incident.ai_urgency}</span>}
 
                   <span
                     className={`pill st-${incident.status}`}
@@ -294,6 +298,80 @@ function Queue({
         ))}
       </ol>
     </section>
+  )
+}
+
+const VERDICT_LABEL = {
+  confirmed: '✓ Confirmed',
+  likely: 'Likely real',
+  unverified: 'Unverified',
+  possible_fake: '⚠ Possible fake',
+}
+
+// Verifier Agent verdict: evidence gathered by code, verdict by AI (or rules). Never hides an SOS.
+function Verification({ v, incidentId }) {
+  const [busy, setBusy] = useState(false)
+  const recheck = async () => {
+    setBusy(true)
+    try { await fetch(`/api/v1/agents/verify/${incidentId}`, { method: 'POST' }) } finally { setBusy(false) }
+  }
+  if (!v) {
+    return (
+      <div className="vf-card">
+        <div className="ai-head"><span className="ai-badge vf-badge">Verifier Agent</span>
+          <button className="mini" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Check now'}</button></div>
+        <p className="ai-note">Not checked yet.</p>
+      </div>
+    )
+  }
+  const e = v.evidence || {}
+  const facts = [
+    ['Reports', e.reports],
+    ['Different senders', e.different_senders],
+    ['Official / camera', e.official_confirmation ? 'yes' : 'no'],
+    ['Other reports nearby (1 h)', e.other_incidents_within_500m_1h],
+    ['Inside Dehradun area', e.inside_dehradun_area ? 'yes' : 'NO'],
+    ['Test words', (e.test_words_in_text || []).join(', ') || 'none'],
+    ['Spam signals', (e.spam_signals || []).length ? `${e.spam_signals.length} sender(s)` : 'none'],
+  ]
+  return (
+    <div className={`vf-card vf-${v.verdict}`}>
+      <div className="ai-head">
+        <span className="ai-badge vf-badge">Verifier Agent</span>
+        <button className="mini" onClick={recheck} disabled={busy}>{busy ? 'Checking…' : 'Re-check'}</button>
+      </div>
+      <p className="ai-summary"><span className={`pill vf vf-${v.verdict}`}>{VERDICT_LABEL[v.verdict] || v.verdict}</span> {v.reasons}</p>
+      <dl className="ai-rows">
+        {facts.map(([k, val]) => <div key={k}><dt>{k}</dt><dd>{String(val ?? '—')}</dd></div>)}
+      </dl>
+      <p className="ai-note">{v.source}. Warning only: no SOS is hidden or down-ranked.</p>
+    </div>
+  )
+}
+
+// Triage Agent reading for one incident. Always labelled as an AI suggestion.
+function AiTriage({ t }) {
+  const rows = [
+    ['Urgency', t.ai_urgency],
+    ['Vulnerable', t.ai_vulnerable],
+    ['Injured', t.ai_injured],
+    ['Needs', t.ai_needs],
+    ['Landmarks', t.ai_landmarks],
+    ['Language', t.ai_language],
+  ].filter(([, v]) => v != null && v !== '')
+  return (
+    <div className="ai-card">
+      <div className="ai-head">
+        <span className="ai-badge">AI Triage Agent</span>
+        <span className="ai-src">{t.category_source}{t.confidence != null ? ` · confidence ${Math.round(t.confidence * 100)}%` : ''}</span>
+      </div>
+      <p className="ai-summary">{t.ai_summary}</p>
+      <dl className="ai-rows">
+        {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className={k === 'Urgency' ? `u-${v}` : ''}>{String(v)}</dd></div>)}
+      </dl>
+      {t.ai_reasons && <p className="ai-why">Why: {t.ai_reasons}</p>}
+      <p className="ai-note">Suggestion only. The officer decides.{t.rule_guess ? ` Word rules said: ${t.rule_guess}.` : ''}</p>
+    </div>
   )
 }
 
@@ -370,6 +448,10 @@ function Detail({
       )}
 
       <p className="summary">{incident.summary}</p>
+
+      {incident.ai_triage && <AiTriage t={incident.ai_triage} />}
+
+      <Verification v={incident.verification} incidentId={incident.id} />
 
       <div className="why">
         <div className="why-label">
@@ -625,6 +707,7 @@ export default function App() {
   const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true })
   const [pickMode, setPickMode] = useState(null)
   const [sideTab, setSideTab] = useState('incident')
+  const [agentSteps, setAgentSteps] = useState([])
 
   const refresh = useCallback(async () => {
     try {
@@ -667,6 +750,13 @@ export default function App() {
       if (msg?.event === 'reroute') {
         setToast({ kind: 'reroute', text: 'A unit was re-routed around a blocked road', at: Date.now() })
         beep()
+      }
+      if (msg?.event === 'route_alert' && msg.data?.status !== 'approved' && msg.data?.kind !== 'info') {
+        setToast({ kind: 'reroute', text: `Route Watch: ${msg.data.text}`, at: Date.now() })
+        beep()
+      }
+      if (msg?.event === 'agent_step') {
+        setAgentSteps((s) => (s.length && s[0].run_id !== msg.data.run_id ? [msg.data] : [...s, msg.data]))
       }
       if (msg?.event === 'shelters') api.shelters().then(setShelters).catch(() => {})
     }
@@ -1031,6 +1121,8 @@ export default function App() {
             ))}
           </div>
 
+          <RouteAlerts tick={tick} officer={officer} />
+
           {toast && (
             <button className="toast" onClick={() => { setSideTab('feed'); setToast(null) }}>
               {toast.text} · <u>open feed</u>
@@ -1081,7 +1173,7 @@ export default function App() {
           </label>
 
           <div className="seg sidetabs" role="tablist">
-            {[['incident', 'Incident'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
+            {[['incident', 'Incident'], ['planner', 'AI Planner'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
               <button key={k} className={sideTab === k ? 'on' : ''} onClick={() => setSideTab(k)}>{label}</button>
             ))}
           </div>
@@ -1101,6 +1193,8 @@ export default function App() {
           />}
 
           {sideTab === 'feed' && <FeedPanel tick={tick} officer={officer} onOpenIncident={openIncident} />}
+
+          {sideTab === 'planner' && <PlannerPanel officer={officer} liveSteps={agentSteps} onOpenIncident={openIncident} />}
 
           {sideTab === 'log' && <LogPanel log={log} />}
         </div>

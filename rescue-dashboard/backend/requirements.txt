@@ -7,3 +7,10 @@ numpy>=1.26
 Pillow>=10.0
 # only for tools/build_graph.py (download the real Dehradun road network once):
 # osmnx==2.0.1
+# AI agents (LangChain + LangGraph); the key goes in backend/.env
+python-dotenv>=1.0
+langchain-core>=1.0
+langgraph>=1.0
+langgraph-checkpoint-sqlite>=3.0
+langchain-groq>=1.0
+langchain-google-genai>=4.0

@@ -9,3 +9,5 @@ responder/node_modules/
 backend/roads.graphml
 tools/edge_sync_state.json
 .venv/
+backend/.env
+backend/agent_runs.db

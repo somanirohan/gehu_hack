@@ -108,7 +108,7 @@ def init_db(reset: bool = False) -> None:
                 "DROP TABLE IF EXISTS log; "
                 "DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS media; DROP TABLE IF EXISTS hazards; "
                 "DROP TABLE IF EXISTS assignments; DROP TABLE IF EXISTS outbox; DROP TABLE IF EXISTS unit_tokens; "
-                "DROP TABLE IF EXISTS shelters;")
+                "DROP TABLE IF EXISTS shelters; DROP TABLE IF EXISTS verifications; DROP TABLE IF EXISTS route_alerts;")
         con.executescript(SCHEMA)
         if con.execute("SELECT COUNT(*) FROM responders").fetchone()[0] == 0:
             con.executemany("INSERT INTO responders (name, kind, lat, lon, status) VALUES (?,?,?,?, 'available')", DEMO_RESPONDERS)
@@ -279,12 +279,43 @@ async def post_reports(items: list[ReportIn]):
 def list_incidents(include_resolved: bool = True):
     with db() as con:
         q = "SELECT * FROM incidents" + ("" if include_resolved else " WHERE status != 'resolved'")
-        items = [enrich(i) for i in rows(con.execute(q))]
+        urg = _ai_urgency_map(con)
+        items = []
+        for i in rows(con.execute(q)):
+            i["ai_urgency"] = urg.get(i["id"])  # Triage Agent reading of the latest report
+            items.append(enrich(i))
         drill = {r[0] for r in con.execute("SELECT DISTINCT incident_id FROM reports WHERE via LIKE 'drill%'")}
+        from agents import verifier
+        checked = verifier.latest_map(con)
     for i in items:
         i["drill"] = i["id"] in drill  # practice data, shown with a DRILL badge
+        i["verification"] = checked.get(i["id"])  # Verifier Agent verdict
     items.sort(key=lambda i: (i["status"] == "resolved", -i["priority"]))
     return items
+
+
+def _ai_urgency_map(con, incident_id: int | None = None) -> dict:
+    q = "SELECT incident_id, payload FROM events WHERE incident_id IS NOT NULL AND payload LIKE '%ai_urgency%'"
+    args: tuple = ()
+    if incident_id is not None:
+        q += " AND incident_id=?"
+        args = (incident_id,)
+    out: dict = {}
+    for iid, payload in con.execute(q + " ORDER BY rowid", args):
+        out[iid] = json.loads(payload).get("ai_urgency")
+    return out
+
+
+def _ai_triage(con, incident_id: int):
+    """Latest Triage Agent reading among this incident's reports (None if only word rules were used)."""
+    row = con.execute("SELECT payload, created_at FROM events WHERE incident_id=? AND payload LIKE '%ai_summary%' ORDER BY rowid DESC LIMIT 1",
+                      (incident_id,)).fetchone()
+    if not row:
+        return None
+    p = json.loads(row[0])
+    keys = ("ai_summary", "ai_urgency", "ai_injured", "ai_vulnerable", "ai_landmarks", "ai_needs", "ai_language",
+            "ai_reasons", "category_source", "rule_guess", "confidence")
+    return {k: p.get(k) for k in keys} | {"at": row[1]}
 
 
 @app.get("/api/incidents/{incident_id}")
@@ -293,8 +324,13 @@ def get_incident(incident_id: int):
         inc = con.execute("SELECT * FROM incidents WHERE id=?", (incident_id,)).fetchone()
         if not inc:
             raise HTTPException(404, "Incident not found")
-        inc = enrich(dict(inc))
+        inc = dict(inc)
+        inc["ai_urgency"] = _ai_urgency_map(con, incident_id).get(incident_id)
+        inc = enrich(inc)
         inc["reports"] = rows(con.execute("SELECT * FROM reports WHERE incident_id=? ORDER BY reported_at", (incident_id,)))
+        inc["ai_triage"] = _ai_triage(con, incident_id)
+        from agents import verifier
+        inc["verification"] = verifier.latest(con, incident_id)
         inc["history"] = [dict(e, detail=json.loads(e["detail"])) for e in rows(con.execute("SELECT * FROM log WHERE incident_id=? ORDER BY seq", (incident_id,)))]
     return inc
 
@@ -444,6 +480,8 @@ app.include_router(v1.router)
 app.include_router(bridge.router)
 app.include_router(bridge.shelter_router)
 app.include_router(_places.router)
+from agents import api as _agents_api  # noqa: E402
+app.include_router(_agents_api.router)
 
 RESPONDER_DIST = BASE.parent / "responder" / "dist"
 if RESPONDER_DIST.exists():

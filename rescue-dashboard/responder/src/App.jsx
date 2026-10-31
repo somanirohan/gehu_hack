@@ -149,6 +149,10 @@ function Duty({ onLogout }) {
         notify('Route changed', d.reason || 'New route')
         setBanner({ kind: d.no_road_route ? 'danger' : 'warn', text: d.no_road_route ? 'No road route left. Ask control room for a boat or drone.' : `Route changed: ${d.reason}. New ETA ${d.eta_min} min.` })
         load()
+      } else if (msg.event === 'route_alert' && d.unit_id === unit.id) {
+        notify(d.kind === 'divert' ? 'Person needing help on your way' : 'Route Watch', d.text)
+        if (d.kind !== 'divert') setBanner({ kind: d.status === 'pending' ? 'danger' : 'warn', text: d.text })
+        load()
       } else if (msg.event === 'alert') {
         const near = !posRef.current || meters(posRef.current, [d.lat, d.lon]) <= d.radius_m
         if (near) { notify('Control room alert', d.text); setBanner({ kind: 'info', text: `Alert: ${d.text}` }) }
@@ -310,6 +314,12 @@ function Duty({ onLogout }) {
               <div className="src">{task.route_source}</div>
             </div>
             {task.reroute_reason && <p className="reroute">↻ {task.reroute_reason}</p>}
+            {(data?.route_alerts || []).filter((x) => x.kind !== 'divert' && (Date.now() - Date.parse(x.created_at)) < 30 * 60 * 1000).slice(0, 2).map((x) => (
+              <div key={x.id} className="route-alert">
+                <strong>Route Watch:</strong> {x.text}
+                {x.photo && <a href={x.photo} target="_blank" rel="noreferrer"><img src={x.photo} alt="Photo from the report" /></a>}
+              </div>
+            ))}
             <p className="summary">{inc.summary}</p>
             {photos.length > 0 && (
               <div className="photos">{photos.slice(0, 4).map((p) => <a key={p} href={p} target="_blank" rel="noreferrer"><img src={p} alt="Photo from the scene" /></a>)}</div>

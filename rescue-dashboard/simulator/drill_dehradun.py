@@ -67,29 +67,38 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8001")
     ap.add_argument("--fast", action="store_true")
-    ap.add_argument("--wait", type=int, default=600, help="seconds to wait for a dispatch")
+    ap.add_argument("--wait", type=int, default=3600, help="seconds to wait for a dispatch (default 1 hour)")
+    ap.add_argument("--citizen-only", action="store_true",
+                    help="skip the 5 SOS; only send the citizen reports onto a unit that is ALREADY driving")
+    ap.add_argument("--citizen", action="store_true",
+                    help="Route Watch demo: a CITIZEN reports a fallen tree and an injured person on the unit's route")
     a = ap.parse_args()
     base = a.url.rstrip("/")
     sync = base + "/api/v1/bitchat/civ-sync"
     gap = 3 if a.fast else 8
 
     print(f"DRILL against {base}. Everything sent is labelled drill.\n")
+    if a.citizen_only:
+        a.citizen = True
     sent = []
-    for i, (place, sender, role, text, waited) in enumerate(SCRIPT, 1):
+    for i, (place, sender, role, text, waited) in enumerate([] if a.citizen_only else SCRIPT, 1):
         m = message(i, place, sender, role, text, waited)
         sent.append(m)
         r = post(sync, bundle([m]))
         print(f"[{i}] {P[place]['name']}: \"{text[:50]}...\" -> new={r['new']}")
         time.sleep(gap)
 
+    if a.citizen_only:
+        sent = []
     # The app re-sends its recent messages on every flush; nothing must duplicate.
-    r = post(sync, bundle(sent[:2]))
+    r = post(sync, bundle(sent[:2])) if sent else {"new": 0, "duplicates": 0}
     print(f"\nRe-sent 2 old messages (as the app does) -> new={r['new']}, duplicates={r['duplicates']}")
 
-    # A second citizen near the first SOS: should merge into the same incident.
-    m = message(99, "tapkeshwar", "neighbour_t", "CIVILIAN", "Tapkeshwar mandir mein log fase, jaldi aao", 1, jitter=0.0004)
-    r = post(sync, bundle([m]))
-    print(f"Second report near Tapkeshwar -> new={r['new']} (dashboard should merge it, report count 2)")
+    if not a.citizen_only:
+        # A second citizen near the first SOS: should merge into the same incident.
+        m = message(99, "tapkeshwar", "neighbour_t", "CIVILIAN", "Tapkeshwar mandir mein log fase, jaldi aao", 1, jitter=0.0004)
+        r = post(sync, bundle([m]))
+        print(f"Second report near Tapkeshwar -> new={r['new']} (dashboard should merge it, report count 2)")
 
     print("\nNow approve a dispatch on the dashboard. Waiting...")
     deadline = time.time() + a.wait
@@ -110,6 +119,23 @@ def main() -> None:
     lat, lon = route[len(route) // 2]
     print(f"{u['name']} is on its way ({asg.get('eta_min')} min, route v{asg.get('route_version')}).")
     time.sleep(gap)
+    if a.citizen:
+        # Route Watch Agent demo: ordinary people report things on the road the unit is driving.
+        t1 = route[len(route) // 3]
+        t2 = route[(2 * len(route)) // 3]
+        tree = {"id": f"drill-{int(time.time())}-tree", "timestamp": int(time.time() * 1000), "sender": "local_shopkeeper",
+                "role": "CIVILIAN", "lat": t1[0], "lon": t1[1],
+                "content": f"Yahan road pe bada ped gir gaya, gaadi nahi ja sakti geo:{t1[0]},{t1[1]}"}
+        post(sync, bundle([tree]))
+        print(f"Citizen: fallen tree on the route at {t1[0]:.5f},{t1[1]:.5f} (Route Watch should re-route or ask).")
+        time.sleep(gap)
+        hurt = {"id": f"drill-{int(time.time())}-hurt", "timestamp": int(time.time() * 1000), "sender": "passerby_22",
+                "role": "CIVILIAN", "lat": t2[0], "lon": t2[1],
+                "content": f"Bachao, scooty accident, ek aadmi ghayal sadak ke kinare geo:{t2[0]},{t2[1]}"}
+        post(sync, bundle([hurt]))
+        print("Citizen: injured person beside the route (Route Watch should suggest stop-to-help if the unit can help).")
+        print("Look at the Route Watch box on the dashboard map and at the responder phone.")
+        return
     m = {"id": f"drill-{int(time.time())}-block", "timestamp": int(time.time() * 1000), "sender": "ddn_police_ctrl",
          "role": "GOV", "lat": lat, "lon": lon,
          "content": f"Road band hai, landslide se malba gira, gaadi nahi ja sakti geo:{lat},{lon}"}

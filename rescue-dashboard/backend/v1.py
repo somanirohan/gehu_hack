@@ -475,7 +475,32 @@ async def post_events(body: Union[EventIn, list[EventIn]]):
     notes.append(("feed", {"count": len(items)}))
     notes.append(("changed", {}))
     await _send(notes)
+    await _after_events(results)
     return results[0] if not isinstance(body, list) else {"received": len(items), "results": results}
+
+
+async def _after_events(results) -> None:
+    """After new reports are saved and shown: Verifier Agent, then Route Watch Agent."""
+    fresh = [r for r in results if r and not r.get("duplicate")]
+    await _verify_after([r.get("incident_id") for r in fresh])
+    ids = [r.get("event_id") for r in fresh if r.get("event_id")]
+    if ids:
+        from fastapi.concurrency import run_in_threadpool
+        from agents import route_watch
+        notes = await run_in_threadpool(route_watch.watch, ids)
+        if notes:
+            await _send(notes + [("changed", {"route_watch": len(notes)})])
+
+
+async def _verify_after(incident_ids) -> None:
+    """Verifier Agent runs AFTER the SOS is saved and shown, so it never delays an SOS."""
+    ids = [i for i in incident_ids if i]
+    if not ids:
+        return
+    from fastapi.concurrency import run_in_threadpool
+    from agents import verifier
+    await run_in_threadpool(verifier.verify_many, ids)
+    await _send([("changed", {"verified": ids})])
 
 
 @router.post("/events/{event_id}/promote")
@@ -615,7 +640,13 @@ def my_task(authorization: Optional[str] = Header(None)):
         me = dict(con.execute("SELECT id,name,kind,code,lat,lon,status FROM responders WHERE id=?", (uid,)).fetchone())
         return {"unit": me, "task": task_for(con, uid),
                 "hazards": core.rows(con.execute("SELECT * FROM hazards WHERE status='active'")),
-                "alerts": core.rows(con.execute("SELECT * FROM outbox WHERE kind='alert' ORDER BY id DESC LIMIT 5"))}
+                "alerts": core.rows(con.execute("SELECT * FROM outbox WHERE kind='alert' ORDER BY id DESC LIMIT 5")),
+                "route_alerts": _route_alerts(con, uid)}
+
+
+def _route_alerts(con, uid):
+    from agents import route_watch
+    return route_watch.unit_alerts(con, uid)
 
 
 @router.post("/units/me/status")
