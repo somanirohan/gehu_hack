@@ -97,6 +97,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var showLocationNotesSheet by remember { mutableStateOf(false) }
     var showShelterSheet by remember { mutableStateOf(false) }
     var showMapPage by remember { mutableStateOf(false) }
+    var showSurvivalGuide by remember { mutableStateOf(false) }
     var showUserSheet by remember { mutableStateOf(false) }
     var selectedUserForSheet by remember { mutableStateOf("") }
     var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
@@ -302,6 +303,9 @@ if (isMeshTimeline) {
                       }
                       androidx.compose.material3.TextButton(onClick = { showMapPage = true }) {
                           androidx.compose.material3.Text("Map 🗺️")
+                      }
+                      androidx.compose.material3.TextButton(onClick = { showSurvivalGuide = true }) {
+                          androidx.compose.material3.Text("Guide 🛡️")
                       }
                   }
                   RoleFilterRow(
@@ -660,6 +664,13 @@ if (isMeshTimeline) {
             detectedPeers = detectedPeers,
             ownPosition = null,
             onBack = { showMapPage = false },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+
+    if (showSurvivalGuide) {
+        com.bitchat.android.ui.guide.SurvivalGuideScreen(
+            onBack = { showSurvivalGuide = false },
             modifier = Modifier.fillMaxSize()
         )
     }

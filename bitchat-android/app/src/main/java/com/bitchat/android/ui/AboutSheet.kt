@@ -338,8 +338,16 @@ fun AboutSheet(
         mutableStateOf(LanguagePreferenceManager.currentLanguageTag())
     }
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showSurvivalGuide by remember { mutableStateOf(false) }
 
     if (isPresented) {
+        if (showSurvivalGuide) {
+            com.bitchat.android.ui.guide.SurvivalGuideScreen(
+                onBack = { showSurvivalGuide = false },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
         BitchatBottomSheet(
             modifier = modifier,
             onDismissRequest = onDismiss,
@@ -477,6 +485,42 @@ fun AboutSheet(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    item(key = "survival_guide") {
+                        Column {
+                            AboutSectionLabel(text = "Emergency Preparedness")
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AboutHorizontalPadding),
+                                color = colorScheme.surface,
+                                shape = AboutCardShape
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showSurvivalGuide = true }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🛡️", fontSize = 22.sp)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Disaster Survival Guide",
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+                                        )
+                                        Text(
+                                            "Offline protocols for earthquakes, cyclones, landslides, and first-aid",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text("View ›", style = MaterialTheme.typography.labelMedium, color = colorScheme.primary)
                                 }
                             }
                         }
