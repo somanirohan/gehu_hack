@@ -5,7 +5,15 @@ Run this after enabling VLM API in Bitchat on your Android device.
 Usage:
     python test_bitchat_fix.py
 """
+import os
+import sys
 import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import numpy as np
 import cv2
 from core.bitchat import BitchatAlertClient

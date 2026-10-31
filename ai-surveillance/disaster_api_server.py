@@ -34,6 +34,12 @@ CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(CURRENT_DIR / ".env")
+except ImportError:
+    pass
+
 from rag.sqlite_store import DisasterSQLiteStore
 
 # Groq Configuration

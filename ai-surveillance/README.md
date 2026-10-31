@@ -27,17 +27,23 @@ Real-time AI security camera system — end-to-end deep learning pipeline with a
 ## Quick Start
 
 ```bash
-# Full pipeline (all detectors + VLM + Bitchat alerts)
+# Disaster AI Groq API Server (for Android Bitchat AI Chatbot)
+python disaster_api_server.py --port 8800
+
+# Full surveillance pipeline (all detectors + VLM + Bitchat alerts)
 python -m pipeline.main_loop
 
 # VLM only — just open the camera and describe what it sees
-python run_vlm_only.py
+python scripts/run_vlm_only.py
 
 # Standalone VLM to Bitchat relay
-python run_vlm_to_bitchat.py
+python scripts/run_vlm_to_bitchat.py
+
+# Auto-discover Android Bitchat device on WiFi
+python tools/bitchat_bridge/find_bitchat.py
 
 # Diagnose Android Bitchat WiFi & API connection
-python diagnose_connection.py --ip 172.20.73.217
+python tools/bitchat_bridge/diagnose_connection.py --ip 172.20.73.217
 
 # Run all unit and integration tests
 python -m pytest tests/ -v
@@ -80,7 +86,7 @@ Every ~30 seconds (or immediately on a FIRE/FALL/FIGHT event) the VLM runs two p
 Run just the VLM with no other detectors (minimal VRAM, clean output):
 
 ```bash
-python run_vlm_only.py
+python scripts/run_vlm_only.py
 ```
 
 Controls: `SPACE` = force inference now, `Q`/`ESC` = quit.
@@ -93,7 +99,7 @@ Every surveillance alert and VLM scene description is pushed to your **Android p
 
 ### Quick WiFi Setup & Connection Guide
 
-See `QUICKSTART_WIFI.txt` for detailed step-by-step connection setup.
+See `docs/QUICKSTART_WIFI.txt` for detailed step-by-step connection setup.
 
 1. Install [Bitchat](https://github.com/permissionlesstech/bitchat-android) on your Android phone.
 2. Open Bitchat → **Settings → VLM API Settings → Enable**.
@@ -101,7 +107,7 @@ See `QUICKSTART_WIFI.txt` for detailed step-by-step connection setup.
 4. Find your device IP automatically or run diagnostic tools:
    ```bash
    # Network diagnostic & port scanner
-   python diagnose_connection.py --ip 172.20.73.217
+   python tools/bitchat_bridge/diagnose_connection.py --ip 172.20.73.217
    ```
 5. Edit `configs/pipeline.yaml`:
    ```yaml
@@ -201,17 +207,28 @@ vlm/
 pipeline/
   frame_router.py      Config-driven stage scheduler
   main_loop.py         Full pipeline: capture→detect→track→pose→reid→face→events→VLM→Bitchat→display
-run_vlm_only.py        Standalone VLM-only webcam demo (no other models loaded)
-run_vlm_to_bitchat.py  Standalone VLM scene describer with live Bitchat pushing
-diagnose_connection.py Network connection & Bitchat API diagnostic tool
-enable_bitchat_api.py  Bitchat API helper configuration script
-QUICKSTART_WIFI.txt    Step-by-step Android WiFi setup guide
+rag/
+  disaster_chatbot.py  Groq AI disaster response assistant with guardrails
+  sqlite_store.py      FTS5 local SQLite survival protocol storage
+  vector_store.py      ChromaDB vector embedding store
+  survival_data.json   Structured survival knowledge base
+  ingest_survival_guide.py Ingestion tool for offline protocols
+scripts/
+  run_vlm_only.py        Standalone VLM-only webcam demo (no other models loaded)
+  run_vlm_to_bitchat.py  Standalone VLM scene describer with live Bitchat pushing
 tools/
   export_onnx.py       FP16 ONNX export for detector + pose
   enroll_face.py       Webcam face enrollment script
+  bitchat_bridge/      Bitchat Wi-Fi discovery & API diagnostic utilities
+    find_bitchat.py      Auto-discover Bitchat nodes across subnets
+    diagnose_connection.py Network connection diagnostic tool
+    setup_wifi_access.py Firewall and hotspot helper
+    test_bitchat_fix.py  Verification test for Bitchat alert client
+docs/                  Setup guides, Wi-Fi quickstart, and fix summaries
 tests/                 Unit + integration test suites
-models/                Weights directory (gitignored — see models/README.md)
-data/                  SQLite event DB + keyframe images (runtime-generated)
+models/                Weights directory (YOLOv8n, OSNet, ONNX models)
+storage/               SQLite databases + vector embeddings
+disaster_api_server.py FastAPI Groq Disaster AI server for Bitchat Chatbot
 ```
 
 ---

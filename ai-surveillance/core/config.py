@@ -22,6 +22,12 @@ warnings.filterwarnings("ignore", message=".*The pynvml package is deprecated.*"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = REPO_ROOT / "configs"
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env")
+except ImportError:
+    pass
+
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
     p = Path(path)

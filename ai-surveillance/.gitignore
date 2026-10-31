@@ -19,3 +19,7 @@ benchmarks/vram_log.csv
 *.mkv
 data/
 temp_*
+.env
+.env.*
+!.env.example
+*.local

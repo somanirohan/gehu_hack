@@ -2,9 +2,17 @@
 
 Quick test to verify images are encoded and sent correctly.
 """
+import os
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import cv2
 import numpy as np
-import time
 from core.bitchat import BitchatAlertClient
 
 def create_test_frame():

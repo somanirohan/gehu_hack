@@ -31,7 +31,11 @@ class DisasterVectorStore:
         self.storage_dir = Path(storage_dir) if storage_dir else DEFAULT_STORAGE_DIR
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-        self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        try:
+            self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+        except Exception:
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+            self.embedding_fn = DefaultEmbeddingFunction()
 
         # Persistent ChromaDB client
         self.client = chromadb.PersistentClient(
