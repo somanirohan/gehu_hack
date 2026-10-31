@@ -96,7 +96,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
     var showLocationNotesSheet by remember { mutableStateOf(false) }
     var showShelterSheet by remember { mutableStateOf(false) }
-    var showMapSheet by remember { mutableStateOf(false) }
+    var showMapPage by remember { mutableStateOf(false) }
     var showUserSheet by remember { mutableStateOf(false) }
     var selectedUserForSheet by remember { mutableStateOf("") }
     var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
@@ -300,8 +300,8 @@ if (isMeshTimeline) {
                       androidx.compose.material3.TextButton(onClick = { showShelterSheet = true }) {
                           androidx.compose.material3.Text("Shelters ${if (viewModel.shelters.value.isNotEmpty()) "(${viewModel.shelters.value.size})" else ""}")
                       }
-                      androidx.compose.material3.TextButton(onClick = { showMapSheet = true }) {
-                          androidx.compose.material3.Text("Map")
+                      androidx.compose.material3.TextButton(onClick = { showMapPage = true }) {
+                          androidx.compose.material3.Text("Map 🗺️")
                       }
                   }
                   RoleFilterRow(
@@ -615,11 +615,11 @@ if (isMeshTimeline) {
         },
         onOpenMap = {
             showShelterSheet = false
-            showMapSheet = true
+            showMapPage = true
         },
         onDismiss = { showShelterSheet = false }
     )
-    if (showMapSheet) {
+    if (showMapPage) {
         val shelters = viewModel.shelters.value
         val publicMsgs = viewModel.publicMessages.value
         val connected: List<String> = viewModel.connectedPeers.value
@@ -654,12 +654,13 @@ if (isMeshTimeline) {
                 label = "${msg.sender}: ${msg.content.take(40)}"
             )
         }
-        com.bitchat.android.ui.map.OfflineMapSheet(
+        com.bitchat.android.ui.map.OfflineMapScreen(
             shelters = shelters,
             incidents = incidents,
             detectedPeers = detectedPeers,
             ownPosition = null,
-            onDismiss = { showMapSheet = false }
+            onBack = { showMapPage = false },
+            modifier = Modifier.fillMaxSize()
         )
     }
 
