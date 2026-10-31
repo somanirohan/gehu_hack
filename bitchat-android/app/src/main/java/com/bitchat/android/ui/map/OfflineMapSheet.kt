@@ -12,17 +12,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -66,14 +67,12 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 /**
  * Live emergency Common Operating Picture backed by osmdroid (OpenStreetMap raster tiles).
  *
- * - Tiles: MAPNIK raster source. Internet fetches live tiles; cached tiles are reused
- *   offline, so the map degrades gracefully if connectivity drops mid-mission.
- * - Own position: [FusedLocationProviderClient] feeds [MyLocationNewOverlay] (the blue GPS
- *   dot) plus a [LocationCallback] that drives the title "you @ lat, lon" line.
- * - Incidents: role-colored markers parsed from broadcast messages carrying a
- *   `geo:lat,lon` tag.
- * - Shelters: registry markers with verification status from
- *   [com.bitchat.android.services.ShelterRegistry].
+ * - Tiles: MAPNIK raster source with offline caching.
+ * - Own position: [FusedLocationProviderClient] feeds [MyLocationNewOverlay] (blue GPS dot).
+ * - Incidents: role-colored markers parsed from broadcast messages carrying a `geo:lat,lon` tag.
+ * - Shelters: registry markers with verification status from [com.bitchat.android.services.ShelterRegistry].
+ * - Detected peers: nearby nodes detected by mesh with roles (Civilian, Ambulance, Shelter, Drone, Rescue).
+ * - Admin role: excluded from map markers.
  */
 data class IncidentMarker(
     val id: String,
@@ -81,6 +80,14 @@ data class IncidentMarker(
     val lon: Double,
     val role: Role,
     val label: String
+)
+
+data class DetectedPeer(
+    val peerId: String,
+    val nickname: String,
+    val role: Role,
+    val lastLat: Double? = null,
+    val lastLon: Double? = null
 )
 
 data class OwnPosition(val lat: Double, val lon: Double)
@@ -95,11 +102,23 @@ private const val DEFAULT_ZOOM = 15.0
 fun OfflineMapSheet(
     shelters: List<AppStateStore.VerifiedShelter>,
     incidents: List<IncidentMarker>,
+    detectedPeers: List<DetectedPeer> = emptyList(),
     ownPosition: OwnPosition?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
+
+    // Admin role is filtered out completely from the map
+    val visibleShelters = remember(shelters) {
+        shelters.filter { it.shelter.role != Role.ADMIN }
+    }
+    val visibleIncidents = remember(incidents) {
+        incidents.filter { it.role != Role.ADMIN }
+    }
+    val visiblePeers = remember(detectedPeers) {
+        detectedPeers.filter { it.role != Role.ADMIN && it.role != Role.UNSET }
+    }
 
     // Configure osmdroid user agent once
     DisposableEffect(Unit) {
@@ -169,19 +188,30 @@ fun OfflineMapSheet(
 
     // The MapView we keep across recompositions
     var mapView by remember { mutableStateOf<MapView?>(null) }
-    var needsCameraTarget by remember { mutableStateOf(ownPosition == null) }
+    var hasCenteredCamera by remember { mutableStateOf(false) }
 
-    LaunchedEffect(needsCameraTarget, livePosition, ownPosition) {
+    // MapView lifecycle management
+    DisposableEffect(mapView) {
+        mapView?.onResume()
+        onDispose {
+            mapView?.onPause()
+        }
+    }
+
+    // Center camera ONCE when initial position is known without fighting user zoom later
+    LaunchedEffect(livePosition, ownPosition, mapView) {
         val mv = mapView ?: return@LaunchedEffect
-        if (needsCameraTarget) {
+        if (!hasCenteredCamera) {
             val focusPos = livePosition
                 ?: ownPosition
                 ?: OwnPosition(SCENE_CENTER_LAT, SCENE_CENTER_LON)
             mv.controller.setCenter(GeoPoint(focusPos.lat, focusPos.lon))
             mv.controller.setZoom(DEFAULT_ZOOM)
-            needsCameraTarget = false
+            hasCenteredCamera = true
         }
     }
+
+    var lastRenderedSig by remember { mutableStateOf("") }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -196,16 +226,22 @@ fun OfflineMapSheet(
                         setTileSource(TileSourceFactory.MAPNIK)
                         setMultiTouchControls(true)
                         setBuiltInZoomControls(false)
+                        isTilesScaledToDpi = true
+                        minZoomLevel = 3.0
+                        maxZoomLevel = 20.0
+                        isFlingEnabled = true
+                        isClickable = true
                         controller.setZoom(DEFAULT_ZOOM)
                         val startPos = ownPosition
                             ?: OwnPosition(SCENE_CENTER_LAT, SCENE_CENTER_LON)
                         controller.setCenter(GeoPoint(startPos.lat, startPos.lon))
+
                         // Show the user a real GPS dot when we have permission
                         if (hasLocationPermission) {
                             try {
                                 val myLoc = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                                 myLoc.enableMyLocation()
-                                myLoc.enableFollowLocation()
+                                // DO NOT enableFollowLocation() - it fights manual pinch zoom and panning!
                                 overlays.add(myLoc)
                             } catch (_: Exception) { }
                         }
@@ -214,52 +250,91 @@ fun OfflineMapSheet(
                 },
                 update = { mv ->
                     val myLoc = livePosition ?: ownPosition
-                    mv.overlays.removeAll { it is Marker }
+                    val currentSig = "${visibleShelters.size}_${visibleIncidents.size}_${visiblePeers.size}_" +
+                        "${visibleIncidents.map { it.id }.hashCode()}_${visibleShelters.map { it.shelter.id }.hashCode()}_" +
+                        "${visiblePeers.map { it.peerId }.hashCode()}_${myLoc?.lat?.toInt()}_${myLoc?.lon?.toInt()}"
 
-                    shelters.forEach { vs ->
-                        val s: Shelter = vs.shelter
-                        val emoji = roleEmoji(s.role)
-                        val bgArgb = roleAccentArgb(s.role)
-                        val ringTint = when {
-                            vs.verified -> reachTintArgb(com.bitchat.android.ui.map.ReachTint.REACHED)
-                            else -> reachTintArgb(com.bitchat.android.ui.map.ReachTint.UNKNOWN)
+                    if (currentSig != lastRenderedSig) {
+                        lastRenderedSig = currentSig
+                        mv.overlays.removeAll { it is Marker }
+
+                        visibleShelters.forEach { vs ->
+                            val s: Shelter = vs.shelter
+                            val emoji = roleEmoji(s.role)
+                            val bgArgb = roleAccentArgb(s.role)
+                            val ringTint = when {
+                                vs.verified -> reachTintArgb(ReachTint.REACHED)
+                                else -> reachTintArgb(ReachTint.UNKNOWN)
+                            }
+                            val distLabel = myLoc?.let { loc ->
+                                val arr = FloatArray(1)
+                                Location.distanceBetween(loc.lat, loc.lon, s.lat, s.lon, arr)
+                                " · ${formatDistance(arr[0])}"
+                            } ?: ""
+                            val m = Marker(mv).apply {
+                                position = GeoPoint(s.lat, s.lon)
+                                title = "${roleEmoji(s.role)} ${s.name} (${s.capacity}) · ${s.status.name.lowercase()}$distLabel${if (vs.verified) " ✓" else ""}"
+                                icon = buildEmojiMarker(context, emoji, bgArgb, ringTint)
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            }
+                            mv.overlays.add(m)
                         }
-                        val distLabel = myLoc?.let { loc ->
-                            val arr = FloatArray(1)
-                            Location.distanceBetween(loc.lat, loc.lon, s.lat, s.lon, arr)
-                            " · ${formatDistance(arr[0])}"
-                        } ?: ""
-                        val m = Marker(mv).apply {
-                            position = GeoPoint(s.lat, s.lon)
-                            title = "${roleEmoji(s.role)} ${s.name} (${s.capacity}) · ${s.status.name.lowercase()}$distLabel${if (vs.verified) " ✓" else ""}"
-                            icon = buildEmojiMarker(context, emoji, bgArgb, ringTint)
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+
+                        visibleIncidents.forEach { inc ->
+                            val emoji = roleEmoji(inc.role)
+                            val bgArgb = roleAccentArgb(inc.role)
+                            val reachTint = reachTintArgb(ReachTint.UNKNOWN)
+                            val distLabel = myLoc?.let { loc ->
+                                val arr = FloatArray(1)
+                                Location.distanceBetween(loc.lat, loc.lon, inc.lat, inc.lon, arr)
+                                " · ${formatDistance(arr[0])}"
+                            } ?: ""
+                            val m = Marker(mv).apply {
+                                position = GeoPoint(inc.lat, inc.lon)
+                                title = "$emoji ${inc.label}$distLabel"
+                                icon = buildEmojiMarker(context, emoji, bgArgb, reachTint)
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            }
+                            mv.overlays.add(m)
                         }
-                        mv.overlays.add(m)
+
+                        // Nearby detected peers with non-admin roles
+                        visiblePeers.forEach { peer ->
+                            val emoji = roleEmoji(peer.role)
+                            val bgArgb = roleAccentArgb(peer.role)
+                            val ringTint = reachTintArgb(ReachTint.REACHED)
+                            val (peerLat, peerLon) = if (peer.lastLat != null && peer.lastLon != null) {
+                                peer.lastLat to peer.lastLon
+                            } else {
+                                val base = myLoc ?: OwnPosition(SCENE_CENTER_LAT, SCENE_CENTER_LON)
+                                val seed = peer.peerId.hashCode()
+                                val angle = Math.toRadians((Math.abs(seed) % 360).toDouble())
+                                val distMeters = 30.0 + (Math.abs(seed / 360) % 45)
+                                val dLat = (distMeters * Math.cos(angle)) / 111000.0
+                                val dLon = (distMeters * Math.sin(angle)) / (111000.0 * Math.cos(Math.toRadians(base.lat)))
+                                (base.lat + dLat) to (base.lon + dLon)
+                            }
+                            val distLabel = myLoc?.let { loc ->
+                                val arr = FloatArray(1)
+                                Location.distanceBetween(loc.lat, loc.lon, peerLat, peerLon, arr)
+                                " · ${formatDistance(arr[0])}"
+                            } ?: ""
+                            val m = Marker(mv).apply {
+                                position = GeoPoint(peerLat, peerLon)
+                                title = "$emoji ${peer.nickname} (${Role.displayLabel(peer.role)})$distLabel"
+                                snippet = "Detected nearby node · ${peer.peerId.take(8)}"
+                                icon = buildEmojiMarker(context, emoji, bgArgb, ringTint)
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            }
+                            mv.overlays.add(m)
+                        }
+
+                        mv.invalidate()
                     }
-                    
-                    incidents.forEach { inc ->
-                        val emoji = roleEmoji(inc.role)
-                        val bgArgb = roleAccentArgb(inc.role)
-                        val reachTint = reachTintArgb(com.bitchat.android.ui.map.ReachTint.UNKNOWN)
-                        val distLabel = myLoc?.let { loc ->
-                            val arr = FloatArray(1)
-                            Location.distanceBetween(loc.lat, loc.lon, inc.lat, inc.lon, arr)
-                            " · ${formatDistance(arr[0])}"
-                        } ?: ""
-                        val m = Marker(mv).apply {
-                            position = GeoPoint(inc.lat, inc.lon)
-                            title = "$emoji ${inc.label}$distLabel"
-                            icon = buildEmojiMarker(context, emoji, bgArgb, reachTint)
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        }
-                        mv.overlays.add(m)
-                    }
-                    mv.invalidate()
                 }
             )
 
-            // Top overlay: title bar + close button (osmdroid renders over everything)
+            // Top overlay: title bar + close button
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                 tonalElevation = 4.dp,
@@ -279,6 +354,35 @@ fun OfflineMapSheet(
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Filled.Close, contentDescription = "Close map")
+                    }
+                }
+            }
+
+            // Zoom Controls (+) and (-)
+            if (mapView != null) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 84.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = { mapView?.controller?.zoomIn() },
+                        modifier = Modifier.size(44.dp),
+                        shape = CircleShape,
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Zoom In", modifier = Modifier.size(20.dp))
+                    }
+                    FloatingActionButton(
+                        onClick = { mapView?.controller?.zoomOut() },
+                        modifier = Modifier.size(44.dp),
+                        shape = CircleShape,
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        Icon(Icons.Filled.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(20.dp))
                     }
                 }
             }

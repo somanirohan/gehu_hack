@@ -18,7 +18,11 @@ enum class Role(val value: UByte) : Parcelable {
     CIVILIAN(0x01u),
     AMBULANCE(0x02u),
     FIRE(0x03u),
-    GOV(0x04u);
+    GOV(0x04u),
+    ADMIN(0x05u),
+    SHELTER(0x06u),
+    DRONE(0x07u),
+    RESCUE(0x08u);
 
     companion object {
         fun fromValue(value: UByte): Role =
@@ -29,6 +33,10 @@ enum class Role(val value: UByte) : Parcelable {
             UNSET -> "All"
             CIVILIAN -> "Civilian"
             AMBULANCE -> "Ambulance"
+            ADMIN -> "Admin"
+            SHELTER -> "Shelter"
+            DRONE -> "Drone"
+            RESCUE -> "Rescue"
             FIRE -> "Fire"
             GOV -> "Gov"
         }

@@ -14,19 +14,27 @@ import com.bitchat.android.model.ShelterStatus
 
 /** Stable emoji per role, used by the COP map markers and the shelter rows. */
 fun roleEmoji(role: Role): String = when (role) {
+    Role.CIVILIAN -> "👤"
     Role.AMBULANCE -> "🚑"
+    Role.ADMIN -> "🛡️"
+    Role.SHELTER -> "🏠"
+    Role.DRONE -> "🛸"
+    Role.RESCUE -> "⛑️"
     Role.FIRE -> "🚒"
     Role.GOV -> "🏛"
-    Role.CIVILIAN -> "🆘"
     Role.UNSET -> "📍"
 }
 
 /** Distinct background colour per role so blank emoji markers still read at a glance. */
 fun roleAccentArgb(role: Role): Int = when (role) {
+    Role.CIVILIAN -> 0xFF43A047.toInt()
     Role.AMBULANCE -> 0xFFE53935.toInt()
+    Role.ADMIN -> 0xFF7B1FA2.toInt()
+    Role.SHELTER -> 0xFF00ACC1.toInt()
+    Role.DRONE -> 0xFF3949AB.toInt()
+    Role.RESCUE -> 0xFFFF6F00.toInt()
     Role.FIRE -> 0xFFFB8C00.toInt()
     Role.GOV -> 0xFF1E88E5.toInt()
-    Role.CIVILIAN -> 0xFFD81B60.toInt()
     Role.UNSET -> 0xFF607D8B.toInt()
 }
 

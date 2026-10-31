@@ -83,9 +83,13 @@ fun RoleFilterRow(
 
 /** Stable demo-time color per responder role so chips stand out at a glance. */
 private fun roleAccent(role: Role, base: Color): Color = when (role) {
-    Role.AMBULANCE -> Color(0xFFE53935) // red
-    Role.FIRE -> Color(0xFFFB8C00)      // orange
-    Role.GOV -> Color(0xFF1E88E5)      // blue
     Role.CIVILIAN -> Color(0xFF43A047)  // green
+    Role.AMBULANCE -> Color(0xFFE53935) // red
+    Role.ADMIN -> Color(0xFF7B1FA2)     // purple
+    Role.SHELTER -> Color(0xFF00ACC1)   // cyan
+    Role.DRONE -> Color(0xFF3949AB)     // indigo
+    Role.RESCUE -> Color(0xFFFF6F00)    // amber/orange
+    Role.FIRE -> Color(0xFFFB8C00)      // orange
+    Role.GOV -> Color(0xFF1E88E5)       // blue
     Role.UNSET -> base
 }

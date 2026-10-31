@@ -442,11 +442,19 @@ fun AboutSheet(
                                             .padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        val profileRoles = listOf(
+                                            com.bitchat.android.model.Role.CIVILIAN,
+                                            com.bitchat.android.model.Role.AMBULANCE,
+                                            com.bitchat.android.model.Role.ADMIN,
+                                            com.bitchat.android.model.Role.SHELTER,
+                                            com.bitchat.android.model.Role.DRONE,
+                                            com.bitchat.android.model.Role.RESCUE
+                                        )
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            com.bitchat.android.model.Role.values().take(3).forEach { role ->
+                                            profileRoles.take(3).forEach { role ->
                                                 ThemeChip(
                                                     label = com.bitchat.android.model.Role.displayLabel(role),
                                                     selected = localRole == role,
@@ -459,7 +467,7 @@ fun AboutSheet(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            com.bitchat.android.model.Role.values().drop(3).forEach { role ->
+                                            profileRoles.drop(3).forEach { role ->
                                                 ThemeChip(
                                                     label = com.bitchat.android.model.Role.displayLabel(role),
                                                     selected = localRole == role,

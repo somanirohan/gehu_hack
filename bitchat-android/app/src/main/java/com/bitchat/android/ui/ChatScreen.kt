@@ -309,8 +309,10 @@ if (isMeshTimeline) {
                       availableRoles = setOf(
                           com.bitchat.android.model.Role.CIVILIAN,
                           com.bitchat.android.model.Role.AMBULANCE,
-                          com.bitchat.android.model.Role.FIRE,
-                          com.bitchat.android.model.Role.GOV
+                          com.bitchat.android.model.Role.ADMIN,
+                          com.bitchat.android.model.Role.SHELTER,
+                          com.bitchat.android.model.Role.DRONE,
+                          com.bitchat.android.model.Role.RESCUE
                       ),
                       onToggle = viewModel::toggleSubscribedRole,
                       onClearAll = viewModel::clearSubscribedRoles
@@ -620,7 +622,29 @@ if (isMeshTimeline) {
     if (showMapSheet) {
         val shelters = viewModel.shelters.value
         val publicMsgs = viewModel.publicMessages.value
+        val connected: List<String> = viewModel.connectedPeers.value
+        val currentPeerRoles: Map<String, com.bitchat.android.model.Role> = viewModel.peerRoles.value
+        val peerNicks: Map<String, String> = viewModel.peerNicknames.value
+
+        val detectedPeers: List<com.bitchat.android.ui.map.DetectedPeer> = (connected + currentPeerRoles.keys).distinct().mapNotNull { pid: String ->
+            val role = currentPeerRoles[pid] ?: com.bitchat.android.model.Role.UNSET
+            if (role == com.bitchat.android.model.Role.ADMIN || role == com.bitchat.android.model.Role.UNSET) {
+                return@mapNotNull null
+            }
+            val nick = peerNicks[pid] ?: "Peer ${pid.take(6)}"
+            val geoMsg = publicMsgs.lastOrNull { it.senderPeerID == pid && com.bitchat.android.ui.map.parseGeoTag(it.content) != null }
+            val geo = geoMsg?.let { com.bitchat.android.ui.map.parseGeoTag(it.content) }
+            com.bitchat.android.ui.map.DetectedPeer(
+                peerId = pid,
+                nickname = nick,
+                role = role,
+                lastLat = geo?.first,
+                lastLon = geo?.second
+            )
+        }
+
         val incidents = publicMsgs.mapNotNull { msg ->
+            if (msg.category == com.bitchat.android.model.Role.ADMIN) return@mapNotNull null
             val geo = com.bitchat.android.ui.map.parseGeoTag(msg.content) ?: return@mapNotNull null
             com.bitchat.android.ui.map.IncidentMarker(
                 id = msg.id,
@@ -633,6 +657,7 @@ if (isMeshTimeline) {
         com.bitchat.android.ui.map.OfflineMapSheet(
             shelters = shelters,
             incidents = incidents,
+            detectedPeers = detectedPeers,
             ownPosition = null,
             onDismiss = { showMapSheet = false }
         )
