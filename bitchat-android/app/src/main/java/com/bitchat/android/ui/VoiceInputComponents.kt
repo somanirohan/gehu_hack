@@ -148,11 +148,7 @@ fun VoiceRecordButton(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // Guard 1: ignore anything arriving before the swap animation settled.
-                    if (System.currentTimeMillis() - composedAt < ArmDelayMs) {
-                        return@awaitEachGesture
-                    }
-                    // Guard 2: never start a second capture on top of a live one.
+                    // Never start a second capture on top of a live one.
                     if (isCapturing) return@awaitEachGesture
 
                     if (micPermission.status !is PermissionStatus.Granted) {
@@ -160,20 +156,9 @@ fun VoiceRecordButton(
                         return@awaitEachGesture
                     }
 
-                    // Guard 3: require a deliberate hold. An up (or a stolen pointer) inside the
-                    // arm window means the press was never a hold; only the timeout means the
-                    // finger is still down.
-                    var stolenDuringArm = false
-                    val releasedEarly = withTimeoutOrNull(HoldToRecordMs) {
-                        waitForUpOrCancellation().also { if (it == null) stolenDuringArm = true }
-                    }
-                    if (releasedEarly != null || stolenDuringArm) return@awaitEachGesture
-
                     val rec = VoiceRecorder(context)
                     val startedFile = rec.start()
                     if (startedFile == null) {
-                        // Recorder refused to start; make sure the caller does not sit in a
-                        // recording state that never began.
                         runCatching { rec.stop() }
                         latestOnCancel.value()
                         return@awaitEachGesture
@@ -202,8 +187,6 @@ fun VoiceRecordButton(
                                 recordedFilePath = null
                                 latestOnTrackFinger.value(null)
                                 buzz()
-                                // Always report the outcome, even when the file is unusable,
-                                // or the caller stays stuck showing the waveform.
                                 if (!path.isNullOrBlank()) {
                                     latestOnFinish.value(path)
                                 } else {
@@ -216,8 +199,7 @@ fun VoiceRecordButton(
                     }
 
                     // Track the finger in root coordinates until it lifts, so the composer can
-                    // run the magnetic slide-to-cancel target. A cancelled pointer (stolen by a
-                    // scroller) ends the capture the same way a lift does.
+                    // run the magnetic slide-to-cancel target.
                     var finalPos: Offset? = null
                     while (true) {
                         val event = awaitPointerEvent()
@@ -227,15 +209,17 @@ fun VoiceRecordButton(
                         if (!change.pressed) break
                     }
 
-                    // Cancelling discards immediately; sending keeps a short tail so the last
-                    // syllable is not clipped (an early pointer event simply ends the tail).
-                    // The verdict is computed from the final pointer coordinate directly —
-                    // reading recomposed state here could be one frame stale.
+                    val elapsed = (System.currentTimeMillis() - recordingStart).coerceAtLeast(0L)
                     val cancel = finalPos?.let { latestShouldCancel.value(it) } == true
                     latestOnTrackFinger.value(null)
-                    if (isCapturing && !cancel) {
+
+                    // Ensure minimum recording duration so MediaRecorder flushes valid AAC frames
+                    if (isCapturing && !cancel && elapsed < 600L) {
+                        withTimeoutOrNull(600L - elapsed) { awaitPointerEvent() }
+                    } else if (isCapturing && !cancel) {
                         withTimeoutOrNull(ReleaseTailMs) { awaitPointerEvent() }
                     }
+
                     if (isCapturing) {
                         val file = recorder?.stop()
                         isCapturing = false
@@ -250,8 +234,9 @@ fun VoiceRecordButton(
                             }
                             latestOnCancel.value()
                         } else {
-                            buzz()
-                            if (!path.isNullOrBlank()) {
+                            val f = path?.let { File(it) }
+                            if (f != null && f.exists() && f.length() > 0) {
+                                buzz()
                                 latestOnFinish.value(path)
                             } else {
                                 latestOnCancel.value()

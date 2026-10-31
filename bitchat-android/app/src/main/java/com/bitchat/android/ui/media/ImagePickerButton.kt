@@ -97,13 +97,15 @@ fun ImagePickerButton(
         modifier = modifier.combinedClickable(
             interactionSource = interactionSource,
             indication = null,
-            onClick = { imagePicker.launch("image/*") },
-            onLongClick = {
+            onClick = {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                     startCameraCapture()
                 } else {
                     permissionLauncher.launch(Manifest.permission.CAMERA)
                 }
+            },
+            onLongClick = {
+                imagePicker.launch("image/*")
             }
         )
     ) { tint ->

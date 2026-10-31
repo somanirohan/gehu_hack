@@ -14,6 +14,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import android.os.Build
+
 /**
  * Simple MediaRecorder wrapper that records to M4A (AAC) for wide compatibility.
  * The resulting file has MIME audio/mp4.
@@ -33,15 +35,18 @@ class VoiceRecorder(private val context: Context) {
             val dir = File(context.filesDir, "voicenotes/outgoing").apply { mkdirs() }
             val name = "voice_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".m4a"
             val file = File(dir, name)
-            val rec = MediaRecorder()
+            val rec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
             rec.setAudioSource(MediaRecorder.AudioSource.MIC)
             rec.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             rec.setAudioChannels(1)
-            // Target: 16 kHz AAC @ 20 kbps ≈ 2.5 KB/sec
-            // Lower sample rate and bitrate for compact, speech-optimized recordings
-            rec.setAudioSamplingRate(16000)
-            rec.setAudioEncodingBitRate(20_000)
+            rec.setAudioSamplingRate(44100)
+            rec.setAudioEncodingBitRate(64_000)
             rec.setOutputFile(file.absolutePath)
             rec.prepare()
             rec.start() 
@@ -49,7 +54,7 @@ class VoiceRecorder(private val context: Context) {
             outFile = file
             file
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start recording: ${e.message}")
+            Log.e(TAG, "Failed to start recording: ${e.message}", e)
             null
         }
     }
@@ -65,7 +70,9 @@ class VoiceRecorder(private val context: Context) {
     fun stop(): File? {
         try {
             recorder?.apply {
-                try { stop() } catch (_: Exception) {}
+                try { stop() } catch (e: Exception) {
+                    Log.w(TAG, "MediaRecorder stop failed", e)
+                }
                 try { reset() } catch (_: Exception) {}
                 try { release() } catch (_: Exception) {}
             }
@@ -73,6 +80,6 @@ class VoiceRecorder(private val context: Context) {
         val f = outFile
         recorder = null
         outFile = null
-        return f
+        return if (f != null && f.exists() && f.length() > 0) f else null
     }
 }

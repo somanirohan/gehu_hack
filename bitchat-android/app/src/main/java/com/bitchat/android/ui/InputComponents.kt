@@ -84,6 +84,24 @@ import com.bitchat.android.features.voice.AudioWaveformExtractor
 import com.bitchat.android.ui.media.RealtimeScrollingWaveform
 import com.bitchat.android.ui.media.ImagePickerButton
 import com.bitchat.android.ui.media.FilePickerButton
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.location.LocationManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Input components for ChatScreen
@@ -304,6 +322,170 @@ internal fun ComposerActionSurface(
     }
 }
 
+sealed class PendingAttachment {
+    data class Image(val path: String) : PendingAttachment()
+    data class File(val path: String, val name: String, val sizeBytes: Long) : PendingAttachment()
+    data class Location(val lat: Double, val lon: Double) : PendingAttachment()
+}
+
+@Composable
+private fun PendingAttachmentCard(
+    attachment: PendingAttachment,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = colorScheme.surfaceVariant.copy(alpha = 0.85f),
+        border = BorderStroke(0.5.dp, colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            when (attachment) {
+                is PendingAttachment.Image -> {
+                    val bmp = remember(attachment.path) {
+                        runCatching { BitmapFactory.decodeFile(attachment.path) }.getOrNull()
+                    }
+                    if (bmp != null) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Attached image",
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("📷", fontSize = 20.sp)
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Photo attached",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = java.io.File(attachment.path).name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                is PendingAttachment.File -> {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📄", fontSize = 20.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = attachment.name,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val sizeText = if (attachment.sizeBytes > 0) {
+                            if (attachment.sizeBytes >= 1024 * 1024) "%.1f MB".format(attachment.sizeBytes / (1024f * 1024f))
+                            else "${attachment.sizeBytes / 1024} KB"
+                        } else "Document"
+                        Text(
+                            text = sizeText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                is PendingAttachment.Location -> {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("📍", fontSize = 22.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Location attached",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Lat: %.5f, Lon: %.5f".format(attachment.lat, attachment.lon),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Remove attachment",
+                    tint = colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+private suspend fun fetchLocationCoordinates(context: Context): Pair<Double, Double>? = withContext(Dispatchers.IO) {
+    try {
+        val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fineGranted && !coarseGranted) return@withContext null
+
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        val deferred = CompletableDeferred<Pair<Double, Double>?>()
+        client.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                deferred.complete(Pair(loc.latitude, loc.longitude))
+            } else {
+                val locMgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                val gpsLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
+                val netLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
+                val best = gpsLoc ?: netLoc
+                deferred.complete(best?.let { Pair(it.latitude, it.longitude) })
+            }
+        }.addOnFailureListener {
+            val locMgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val gpsLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
+            val netLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
+            val best = gpsLoc ?: netLoc
+            deferred.complete(best?.let { Pair(it.latitude, it.longitude) })
+        }
+        deferred.await()
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @Composable
 fun MessageInput(
     value: TextFieldValue,
@@ -321,10 +503,37 @@ fun MessageInput(
     mentionPeerIdentities: Map<String, PeerIdentity> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var pendingAttachment by remember { mutableStateOf<PendingAttachment?>(null) }
+    var isFetchingLocation by remember { mutableStateOf(false) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            coroutineScope.launch {
+                isFetchingLocation = true
+                val coords = fetchLocationCoordinates(context)
+                if (coords != null) {
+                    pendingAttachment = PendingAttachment.Location(coords.first, coords.second)
+                } else {
+                    Toast.makeText(context, "Could not acquire GPS location. Please check GPS settings.", Toast.LENGTH_SHORT).show()
+                }
+                isFetchingLocation = false
+            }
+        } else {
+            Toast.makeText(context, "Location permission required to attach location.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val palette = LocalBitchatPalette.current
     val colorScheme = MaterialTheme.colorScheme
     val isFocused = remember { mutableStateOf(false) }
     val hasText = value.text.isNotBlank()
+    val canSend = hasText || pendingAttachment != null
     val focusRequester = remember { FocusRequester() }
     var isRecording by remember { mutableStateOf(false) }
     var elapsedMs by remember { mutableStateOf(0L) }
@@ -396,47 +605,101 @@ fun MessageInput(
         label = "composerContainer"
     )
 
-    Row(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        // MARK: - The pill. Field and action buttons are one visual object.
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = ComposerMinHeight)
-                // Grow smoothly as the field wraps to more lines rather than jumping a line at
-                // a time.
-                .animateContentSize(
-                    animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
+    val handleSend = {
+        val att = pendingAttachment
+        val text = value.text.trim()
+        if (att != null) {
+            when (att) {
+                is PendingAttachment.Image -> {
+                    onSendImageNote(
+                        selectedPrivatePeer,
+                        currentChannel,
+                        att.path
+                    )
+                    if (text.isNotEmpty()) {
+                        onSend()
+                    }
+                }
+                is PendingAttachment.File -> {
+                    onSendFileNote(
+                        selectedPrivatePeer,
+                        currentChannel,
+                        att.path
+                    )
+                    if (text.isNotEmpty()) {
+                        onSend()
+                    }
+                }
+                is PendingAttachment.Location -> {
+                    val fullMsg = if (text.isNotEmpty()) {
+                        "$text geo:%.5f,%.5f".format(att.lat, att.lon)
+                    } else {
+                        "geo:%.5f,%.5f".format(att.lat, att.lon)
+                    }
+                    onSendWithGeotag(fullMsg)
+                }
+            }
+            pendingAttachment = null
+        } else if (hasText) {
+            onSend()
+        }
+    }
+
+    Column(modifier = modifier) {
+        AnimatedVisibility(
+            visible = pendingAttachment != null,
+            enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) + expandVertically(tween(BitchatMotion.STANDARD_MS)),
+            exit = fadeOut(tween(BitchatMotion.QUICK_MS)) + shrinkVertically(tween(BitchatMotion.QUICK_MS))
+        ) {
+            pendingAttachment?.let { att ->
+                PendingAttachmentCard(
+                    attachment = att,
+                    onDismiss = { pendingAttachment = null }
                 )
-                .background(containerColor, ComposerShape)
-                .border(borderWidth, borderColor, ComposerShape),
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom
         ) {
-            Box(
+            // MARK: - The pill. Field and action buttons are one visual object.
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 18.dp, end = 4.dp, top = 15.dp, bottom = 15.dp)
+                    .heightIn(min = ComposerMinHeight)
+                    // Grow smoothly as the field wraps to more lines rather than jumping a line at
+                    // a time.
+                    .animateContentSize(
+                        animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
+                    )
+                    .background(containerColor, ComposerShape)
+                    .border(borderWidth, borderColor, ComposerShape),
+                verticalAlignment = Alignment.Bottom
             ) {
-                // Always keep the text field mounted to retain focus and avoid IME collapse
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    // Near-white, not terminal green: this is the one place in the app where the
-                    // user is composing rather than reading, and green-on-black is tiring to
-                    // type into.
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = if (cashuToken == null) colorScheme.onSurface else Color.Transparent,
-                        fontFamily = BitchatFontFamily
-                    ),
-                    cursorBrush = SolidColor(
-                        if (isRecording || cashuToken != null) Color.Transparent else colorScheme.onSurface
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (hasText) onSend()
-                    }),
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 18.dp, end = 4.dp, top = 15.dp, bottom = 15.dp)
+                ) {
+                    // Always keep the text field mounted to retain focus and avoid IME collapse
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        // Near-white, not terminal green: this is the one place in the app where the
+                        // user is composing rather than reading, and green-on-black is tiring to
+                        // type into.
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = if (cashuToken == null) colorScheme.onSurface else Color.Transparent,
+                            fontFamily = BitchatFontFamily
+                        ),
+                        cursorBrush = SolidColor(
+                            if (isRecording || cashuToken != null) Color.Transparent else colorScheme.onSurface
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            if (canSend) handleSend()
+                        }),
                     singleLine = cashuToken != null,
                     // Cap the growth so a pasted wall of text cannot swallow the message list.
                     maxLines = 6,
@@ -538,7 +801,7 @@ fun MessageInput(
             val latestOnSendVoiceNote = rememberUpdatedState(onSendVoiceNote)
 
             AnimatedContent(
-                targetState = hasText,
+                targetState = canSend,
                 transitionSpec = {
                     (
                         fadeIn(tween(BitchatMotion.STANDARD_MS)) +
@@ -568,7 +831,7 @@ fun MessageInput(
                 if (showSend) {
                     SendButton(
                         isAccented = latestSelectedPeer.value != null || latestChannel.value != null,
-                        onSend = onSend
+                        onSend = handleSend
                     )
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -590,10 +853,8 @@ fun MessageInput(
                                             .size(40.dp)
                                             .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), CircleShape)
                                             .clickable {
-                                                val msg = value.text.trim()
-                                                if (msg.isNotEmpty()) {
-                                                    onSendSOS(msg)
-                                                }
+                                                val msg = value.text.trim().ifEmpty { "EMERGENCY SOS! Need immediate assistance!" }
+                                                onSendSOS(msg)
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -608,15 +869,29 @@ fun MessageInput(
                                             .size(40.dp)
                                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
                                             .clickable {
-                                                val msg = value.text.trim()
-                                                if (msg.isNotEmpty()) {
-                                                    onSendWithGeotag(msg)
+                                                val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                                val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                                if (fineGranted || coarseGranted) {
+                                                    coroutineScope.launch {
+                                                        isFetchingLocation = true
+                                                        val coords = fetchLocationCoordinates(context)
+                                                        if (coords != null) {
+                                                            pendingAttachment = PendingAttachment.Location(coords.first, coords.second)
+                                                        } else {
+                                                            Toast.makeText(context, "Could not acquire GPS location. Please check GPS settings.", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                        isFetchingLocation = false
+                                                    }
+                                                } else {
+                                                    locationPermissionLauncher.launch(
+                                                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                                    )
                                                 }
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "📍",
+                                            text = if (isFetchingLocation) "⏳" else "📍",
                                             fontSize = 20.sp
                                         )
                                     }
@@ -637,11 +912,7 @@ fun MessageInput(
                             ) {
                                 ImagePickerButton(
                                     onImageReady = { outPath ->
-                                        onSendImageNote(
-                                            latestSelectedPeer.value,
-                                            latestChannel.value,
-                                            outPath
-                                        )
+                                        pendingAttachment = PendingAttachment.Image(outPath)
                                     }
                                 )
                             }
@@ -730,11 +1001,8 @@ fun MessageInput(
                             ) {
                                 FilePickerButton(
                                     onFileReady = { outPath ->
-                                        onSendFileNote(
-                                            latestSelectedPeer.value,
-                                            latestChannel.value,
-                                            outPath
-                                        )
+                                        val f = File(outPath)
+                                        pendingAttachment = PendingAttachment.File(outPath, f.name, f.length())
                                     }
                                 )
                             }
@@ -748,6 +1016,7 @@ fun MessageInput(
             }
         }
     }
+}
 
     // Auto-stop handled inside VoiceRecordButton
 }

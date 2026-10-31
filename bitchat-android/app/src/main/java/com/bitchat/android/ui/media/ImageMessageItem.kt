@@ -27,6 +27,7 @@ import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import androidx.compose.material3.ColorScheme
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
+import com.bitchat.android.ui.isFromSelf
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 import java.text.SimpleDateFormat
 
@@ -47,7 +48,11 @@ fun ImageMessageItem(
 ) {
     val palette = LocalBitchatPalette.current
     val path = message.content.trim()
-    Column(modifier = modifier.fillMaxWidth()) {
+    val isSelf = message.isFromSelf(currentUserNickname, meshService.myPeerID)
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = if (isSelf) Alignment.End else Alignment.Start
+    ) {
         val headerText = com.bitchat.android.ui.formatMessageHeaderAnnotatedString(
             message = message,
             currentUserNickname = currentUserNickname,
@@ -91,7 +96,10 @@ fun ImageMessageItem(
                 is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered -> if (st.total > 0) st.reached.toFloat() / st.total.toFloat() else 0f
                 else -> null
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (isSelf) Arrangement.End else Arrangement.Start
+            ) {
                 Box {
                     if (progressFraction != null && progressFraction < 1f && message.sender == currentUserNickname) {
                         // Cyberpunk block-reveal while sending

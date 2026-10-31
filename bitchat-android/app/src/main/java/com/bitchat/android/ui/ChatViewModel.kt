@@ -445,11 +445,7 @@ class ChatViewModel(
      * so subscribed responders pick it up.
      */
     fun sendSOS(message: String, onAccepted: (Boolean) -> Unit = {}) {
-        val trimmed = message.trim()
-        if (trimmed.isEmpty()) {
-            onAccepted(false)
-            return
-        }
+        val trimmed = message.trim().ifEmpty { "EMERGENCY SOS! Need immediate assistance!" }
         viewModelScope.launch {
             val coords = currentLocation()
             val geoTag = coords?.let { " geo:%.5f,%.5f".format(it.first, it.second) } ?: ""
@@ -468,7 +464,8 @@ class ChatViewModel(
         viewModelScope.launch {
             val coords = currentLocation()
             val geoTag = coords?.let { " geo:%.5f,%.5f".format(it.first, it.second) } ?: ""
-            sendMessage(content + geoTag, onAccepted)
+            val fullContent = if (content.contains("geo:")) content else content + geoTag
+            sendMessage(fullContent, onAccepted)
         }
     }
 
@@ -488,9 +485,23 @@ class ChatViewModel(
                 val result = kotlinx.coroutines.CompletableDeferred<Pair<Double, Double>?>()
                 client.lastLocation
                     .addOnSuccessListener { loc ->
-                        result.complete(loc?.let { Pair(it.latitude, it.longitude) })
+                        if (loc != null) {
+                            result.complete(Pair(loc.latitude, loc.longitude))
+                        } else {
+                            val locMgr = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+                            val gpsLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) }.getOrNull()
+                            val netLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) }.getOrNull()
+                            val best = gpsLoc ?: netLoc
+                            result.complete(best?.let { Pair(it.latitude, it.longitude) })
+                        }
                     }
-                    .addOnFailureListener { result.complete(null) }
+                    .addOnFailureListener {
+                        val locMgr = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+                        val gpsLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) }.getOrNull()
+                        val netLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) }.getOrNull()
+                        val best = gpsLoc ?: netLoc
+                        result.complete(best?.let { Pair(it.latitude, it.longitude) })
+                    }
                 result.await()
             } catch (_: Exception) { null }
         }

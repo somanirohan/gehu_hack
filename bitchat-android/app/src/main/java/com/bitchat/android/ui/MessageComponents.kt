@@ -511,7 +511,11 @@ fun MessageItem(
             }
             else -> null to null
         }
-        Column(modifier = modifier.fillMaxWidth()) {
+        val isSelf = message.isFromSelf(currentUserNickname, meshService.myPeerID)
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            horizontalAlignment = if (isSelf) Alignment.End else Alignment.Start
+        ) {
             // Header: nickname + timestamp line above the file, identical styling to text messages
             val headerText = formatMessageHeaderAnnotatedString(
                 message = message,
@@ -557,7 +561,10 @@ fun MessageItem(
                 null
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (isSelf) Arrangement.End else Arrangement.Start
+            ) {
                 Box {
                     if (packet != null) {
                         if (overrideProgress != null) {
