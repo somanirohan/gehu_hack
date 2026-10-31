@@ -87,6 +87,10 @@ fun MeshPeerListSheet(
     viewModel: ChatViewModel,
     onDismiss: () -> Unit,
     onShowVerification: () -> Unit,
+    onOpenMap: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
+    onOpenShelters: () -> Unit = {},
+    onOpenAiChatbot: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -180,11 +184,84 @@ fun MeshPeerListSheet(
                         else -> visibleConnectedPeers.count { it != viewModel.myPeerID }
                     }
 
+                    // Tools & Emergency Section (Map, Survival Guide, Shelters)
+                    item(key = "emergency_tools_section") {
+                        Column {
+                            SheetIconSectionHeader(
+                                iconRes = R.drawable.ic_spec_globe,
+                                title = stringResource(R.string.sidebar_tools_and_safety),
+                                subtitle = stringResource(R.string.sidebar_tools_and_safety_sub),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AboutHorizontalPadding)
+                                    .padding(top = 10.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = AboutCardShape
+                            ) {
+                                Column {
+                                    SidebarToolRow(
+                                        title = stringResource(R.string.sidebar_ai_chatbot),
+                                        subtitle = stringResource(R.string.sidebar_ai_chatbot_desc),
+                                        leadingIcon = {
+                                            Text("🤖", fontSize = 16.sp)
+                                        },
+                                        badgeText = "GROQ",
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenAiChatbot()
+                                        }
+                                    )
+                                    SheetCardDivider()
+                                    SidebarToolRow(
+                                        title = stringResource(R.string.sidebar_offline_map),
+                                        subtitle = stringResource(R.string.sidebar_offline_map_desc),
+                                        leadingIcon = {
+                                            Text("🗺️", fontSize = 16.sp)
+                                        },
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenMap()
+                                        }
+                                    )
+                                    SheetCardDivider()
+                                    SidebarToolRow(
+                                        title = stringResource(R.string.about_disaster_survival_guide),
+                                        subtitle = stringResource(R.string.sidebar_survival_guide_desc),
+                                        leadingIcon = {
+                                            Text("🛡️", fontSize = 16.sp)
+                                        },
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenGuide()
+                                        }
+                                    )
+                                    SheetCardDivider()
+                                    val shelterCount = viewModel.shelters.collectAsStateWithLifecycle().value.size
+                                    SidebarToolRow(
+                                        title = stringResource(R.string.sidebar_shelters),
+                                        subtitle = stringResource(R.string.sidebar_shelters_desc),
+                                        leadingIcon = {
+                                            Text("🏠", fontSize = 16.sp)
+                                        },
+                                        badgeText = if (shelterCount > 0) "$shelterCount" else null,
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenShelters()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item(key = "private_conversations_header") {
                         SheetIconSectionHeader(
                             iconRes = R.drawable.ic_spec_envelope,
                             title = stringResource(R.string.conversations),
-                            modifier = Modifier.padding(top = 8.dp)
+                            modifier = Modifier.padding(top = 20.dp)
                         )
                     }
 
@@ -567,6 +644,67 @@ fun MeshPeerListSheet(
 /** Icon size for trailing actions on peer rows (matches settings glyph scale). */
 private val PeerRowIconSize = 22.dp
 private const val CONVERSATION_SEARCH_THRESHOLD = 8
+
+@Composable
+private fun SidebarToolRow(
+    title: String,
+    subtitle: String,
+    leadingIcon: @Composable () -> Unit,
+    onClick: () -> Unit,
+    badgeText: String? = null
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val palette = LocalBitchatPalette.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = SheetRowHorizontal, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(SheetRowLeadingSlot),
+            contentAlignment = Alignment.Center
+        ) {
+            leadingIcon()
+        }
+        Spacer(modifier = Modifier.width(SheetRowLeadingGutter))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontFamily = BitchatFontFamily,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colorScheme.onSurface
+                )
+                if (badgeText != null) {
+                    BitchatBadge(text = badgeText)
+                }
+            }
+            Text(
+                text = subtitle,
+                fontFamily = BitchatFontFamily,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = colorScheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = palette.textTertiary,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
 
 @Composable
 private fun ChannelRow(

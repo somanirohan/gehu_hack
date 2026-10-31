@@ -9,8 +9,19 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+
+data class ChatMessage(
+    val role: String, // "user" or "assistant"
+    val content: String,
+    val isGuardrailNotice: Boolean = false,
+    val matchedProtocol: String? = null,
+    val criticalWarning: String? = null,
+    val provider: String? = null,
+    val timestampMs: Long = System.currentTimeMillis()
+)
 
 data class DisasterAiResponse(
     val answer: String,
@@ -18,15 +29,18 @@ data class DisasterAiResponse(
     val category: String? = null,
     val criticalWarning: String? = null,
     val actions: String? = null,
-    val isOfflineFallback: Boolean = false
+    val isOfflineFallback: Boolean = false,
+    val isDisasterRelated: Boolean = true,
+    val guardrailTriggered: Boolean = false,
+    val provider: String = "Groq"
 )
 
 /**
- * Client for the Disaster Management AI Assistant.
+ * Client for the ResQMesh Disaster AI Assistant powered by Groq.
  *
- * Connects to the local machine running the SQLite + Qwen2.5-1.5B API server
- * on port 8800. Automatically falls back to on-device protocol matching if
- * the network or local server is unreachable.
+ * Connects to the local/remote backend server on port 8800 running Groq + safety guardrails,
+ * or connects directly to Groq API if configured.
+ * Automatically falls back to on-device protocol matching if network is unreachable.
  */
 class DisasterAiClient(private val context: Context) {
 
@@ -34,7 +48,10 @@ class DisasterAiClient(private val context: Context) {
         private const val TAG = "DisasterAiClient"
         private const val PREFS_NAME = "disaster_ai_prefs"
         private const val KEY_SERVER_URL = "server_url"
-        const val DEFAULT_SERVER_URL = "http://10.0.2.2:8800" // Works out-of-the-box in Android Emulator
+        private const val KEY_GROQ_API_KEY = "groq_api_key"
+        const val DEFAULT_SERVER_URL = "http://10.0.2.2:8800" // Works in Android Emulator
+        private const val GROQ_DIRECT_URL = "https://api.groq.com/openai/v1/chat/completions"
+        private const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
 
@@ -44,6 +61,10 @@ class DisasterAiClient(private val context: Context) {
         get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
         set(value) = prefs.edit().putString(KEY_SERVER_URL, value.trim()).apply()
 
+    var groqApiKey: String
+        get() = prefs.getString(KEY_GROQ_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_GROQ_API_KEY, value.trim()).apply()
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -51,52 +72,166 @@ class DisasterAiClient(private val context: Context) {
         .build()
 
     /**
-     * Queries the Disaster AI server. If the server is unreachable, falls back to
-     * instantaneous local protocol search from in-app knowledge base.
+     * Sends a multi-turn chat message to the Groq Disaster AI backend.
      */
-    suspend fun askDisasterAi(query: String, language: String = "en"): DisasterAiResponse = withContext(Dispatchers.IO) {
-        val trimmedQuery = query.trim()
-        if (trimmedQuery.isEmpty()) {
-            return@withContext DisasterAiResponse("Please enter an emergency question.")
+    suspend fun sendChatMessage(
+        messages: List<ChatMessage>,
+        language: String = "en"
+    ): DisasterAiResponse = withContext(Dispatchers.IO) {
+        val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content.orEmpty().trim()
+        if (lastUserMessage.isEmpty()) {
+            return@withContext DisasterAiResponse("Please enter a disaster survival question.")
         }
 
+        // 1. Try Backend Server (with Groq and guardrails)
+        val serverResponse = tryBackendChat(messages, lastUserMessage, language)
+        if (serverResponse != null) {
+            return@withContext serverResponse
+        }
+
+        // 2. If server is unreachable and direct Groq key is present, try direct Groq API
+        val directKey = groqApiKey.trim()
+        if (directKey.isNotEmpty()) {
+            val directResponse = tryDirectGroq(messages, lastUserMessage, directKey, language)
+            if (directResponse != null) {
+                return@withContext directResponse
+            }
+        }
+
+        // 3. Fallback to local on-device verified knowledge base
+        return@withContext localOfflineFallback(lastUserMessage, language)
+    }
+
+    /**
+     * Single question helper (backwards compatible with SurvivalGuideScreen).
+     */
+    suspend fun askDisasterAi(query: String, language: String = "en"): DisasterAiResponse {
+        val chatList = listOf(ChatMessage(role = "user", content = query))
+        return sendChatMessage(chatList, language)
+    }
+
+    private fun tryBackendChat(
+        messages: List<ChatMessage>,
+        query: String,
+        language: String
+    ): DisasterAiResponse? {
         val baseUrl = serverUrl.removeSuffix("/")
         val url = "$baseUrl/api/chat"
 
         try {
-            val jsonPayload = JSONObject().apply {
-                put("query", trimmedQuery)
+            val messagesArray = JSONArray().apply {
+                for (m in messages) {
+                    put(JSONObject().apply {
+                        put("role", m.role)
+                        put("content", m.content)
+                    })
+                }
+            }
+
+            val payload = JSONObject().apply {
+                put("query", query)
+                put("messages", messagesArray)
                 put("language", language)
-                put("max_tokens", 220)
-                put("temperature", 0.3)
+                put("max_tokens", 350)
+                put("temperature", 0.2)
+                if (groqApiKey.isNotBlank()) {
+                    put("groq_api_key", groqApiKey.trim())
+                }
+            }
+
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .post(payload.toString().toRequestBody(JSON_MEDIA))
+
+            if (groqApiKey.isNotBlank()) {
+                requestBuilder.header("X-Groq-Api-Key", groqApiKey.trim())
+            }
+
+            val response = httpClient.newCall(requestBuilder.build()).execute()
+            if (response.isSuccessful) {
+                val bodyStr = response.body.string()
+                val json = JSONObject(bodyStr)
+                return DisasterAiResponse(
+                    answer = json.optString("answer", "No response generated."),
+                    matchedProtocol = if (json.has("matched_protocol") && !json.isNull("matched_protocol")) json.getString("matched_protocol") else null,
+                    category = if (json.has("category") && !json.isNull("category")) json.getString("category") else null,
+                    criticalWarning = if (json.has("critical_warning") && !json.isNull("critical_warning")) json.getString("critical_warning") else null,
+                    actions = if (json.has("actions") && !json.isNull("actions")) json.getString("actions") else null,
+                    isOfflineFallback = false,
+                    isDisasterRelated = json.optBoolean("is_disaster_related", true),
+                    guardrailTriggered = json.optBoolean("guardrail_triggered", false),
+                    provider = json.optString("provider", "Groq")
+                )
+            } else {
+                Log.w(TAG, "Backend returned HTTP ${response.code}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot reach disaster backend at $url: ${e.message}")
+        }
+        return null
+    }
+
+    private fun tryDirectGroq(
+        messages: List<ChatMessage>,
+        query: String,
+        apiKey: String,
+        language: String
+    ): DisasterAiResponse? {
+        try {
+            val systemDirective = "You are the ResQMesh Emergency Disaster Response Specialist AI powered by Groq. " +
+                "STRICT SAFETY GUARDRAIL: You are strictly restricted to disaster survival, emergency first aid, search and rescue, and crisis evacuation. " +
+                "If the query is not disaster-related, refuse and redirect to disaster safety. Always state critical warnings in bold first."
+
+            val groqMessagesArray = JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", "$systemDirective Respond fluently in $language.")
+                })
+                for (m in messages) {
+                    put(JSONObject().apply {
+                        put("role", m.role)
+                        put("content", m.content)
+                    })
+                }
+            }
+
+            val payload = JSONObject().apply {
+                put("model", DEFAULT_GROQ_MODEL)
+                put("messages", groqMessagesArray)
+                put("temperature", 0.2)
+                put("max_tokens", 350)
             }
 
             val request = Request.Builder()
-                .url(url)
-                .post(jsonPayload.toString().toRequestBody(JSON_MEDIA))
+                .url(GROQ_DIRECT_URL)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Content-Type", "application/json")
+                .post(payload.toString().toRequestBody(JSON_MEDIA))
                 .build()
 
             val response = httpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val bodyStr = response.body.string()
                 val json = JSONObject(bodyStr)
-                return@withContext DisasterAiResponse(
-                    answer = json.optString("answer", "No response generated."),
-                    matchedProtocol = if (json.has("matched_protocol") && !json.isNull("matched_protocol")) json.getString("matched_protocol") else null,
-                    category = if (json.has("category") && !json.isNull("category")) json.getString("category") else null,
-                    criticalWarning = if (json.has("critical_warning") && !json.isNull("critical_warning")) json.getString("critical_warning") else null,
-                    actions = if (json.has("actions") && !json.isNull("actions")) json.getString("actions") else null,
-                    isOfflineFallback = false
-                )
-            } else {
-                Log.w(TAG, "Server returned HTTP ${response.code}, falling back to on-device lookup")
+                val choices = json.getJSONArray("choices")
+                if (choices.length() > 0) {
+                    val msgObj = choices.getJSONObject(0).getJSONObject("message")
+                    val answer = msgObj.getString("content").trim()
+                    val isGuardrail = answer.contains("Guardrail Notice", ignoreCase = true) ||
+                        answer.contains("सुरक्षा सूचना", ignoreCase = true)
+                    return DisasterAiResponse(
+                        answer = answer,
+                        isOfflineFallback = false,
+                        isDisasterRelated = !isGuardrail,
+                        guardrailTriggered = isGuardrail,
+                        provider = "Groq Direct"
+                    )
+                }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Cannot reach disaster AI server at $url: ${e.message}. Using offline fallback.")
+            Log.w(TAG, "Direct Groq call failed: ${e.message}")
         }
-
-        // On-device deterministic fallback in localized language
-        return@withContext localOfflineFallback(trimmedQuery, language)
+        return null
     }
 
     /**
@@ -146,27 +281,21 @@ class DisasterAiClient(private val context: Context) {
                 category = bestSection.category,
                 criticalWarning = bestSection.criticalAlert,
                 actions = allTips,
-                isOfflineFallback = true
+                isOfflineFallback = true,
+                isDisasterRelated = true,
+                guardrailTriggered = false,
+                provider = "Offline Knowledge Base"
             )
         }
 
-        val fallbackAnswers = mapOf(
-            "hi" to "⚠️ आपातकालीन सुरक्षा नियम:\n• सिर और महत्वपूर्ण अंगों की तुरंत रक्षा करें।\n• बिजली के गिरे तारों और पानी से दूर रहें।\n• बचाव दल को संकेत देने के लिए ठोस वस्तु पर 3 बार ठोकें।\n• अपनी लोकेशन भेजने के लिए Bitchat में लाल SOS दबाएं।",
-            "mr" to "⚠️ आपत्कालीन सुरक्षा नियम:\n• डोके आणि महत्त्वाच्या अवयवांचे त्वरित संरक्षण करा.\n• विजेच्या तारा आणि साचलेल्या पाण्यापासून लांब राहा.\n• बचाव पथकाला संकेत देण्यासाठी वस्तूवर ३ वेळा ठोका.\n• लोकेशन पाठवण्यासाठी Bitchat मध्ये लाल SOS दाबा.",
-            "ta" to "⚠️ அவசர பாதுகாப்பு விதி:\n• தலை மற்றும் முக்கிய உறுப்புகளை உடனடியாகப் பாதுகாக்கவும்.\n• மின் கம்பிகள் மற்றும் வெள்ள நீரிலிருந்து விலகி இருங்கள்.\n• மீட்புக் குழுவினருக்கு சமிக்ஞை செய்ய திடமான பொருளில் 3 முறை தட்டவும்.\n• உங்கள் இருப்பிடத்தை அனுப்ப Bitchat-ல் சிவப்பு SOS-ஐ அழுத்தவும்.",
-            "te" to "⚠️ అత్యవసర భద్రతా నియమం:\n• తల మరియు ముఖ్యమైన శరీర భాగాలను వెంటనే రక్షించుకోండి.\n• విద్యుత్ తీగలు మరియు వరద నీటికి దూరంగా ఉండండి.\n• రెస్క్యూ సిబ్బందికి సంకేతం ఇవ్వడానికి గట్టి వస్తువుపై 3 సార్లు కొట్టండి.\n• మీ లొకేషన్‌ను పంపడానికి Bitchat లో ఎరుపు రంగు SOS బటన్‌ను నొక్కండి.",
-            "en" to "⚠️ Emergency Safety Rule:\n• Protect head and vital organs immediately.\n• Avoid downed electrical lines and floodwaters.\n• Tap 3 times rhythmically on solid objects to signal rescue workers.\n• Tap red SOS in Bitchat to broadcast your coordinates."
-        )
-
-        val langCode = language.take(2).lowercase()
-        val defaultAns = fallbackAnswers[langCode] ?: fallbackAnswers["en"]!!
-
         return DisasterAiResponse(
-            answer = defaultAns,
-            matchedProtocol = "Emergency Protocol",
-            category = "General",
-            criticalWarning = "Always prioritize personal physical protection and avoid panic.",
-            isOfflineFallback = true
+            answer = "Seek secure high ground immediately, avoid damaged structures, and broadcast your SOS beacon in Bitchat.",
+            matchedProtocol = "General Emergency",
+            category = "Safety",
+            isOfflineFallback = true,
+            isDisasterRelated = true,
+            guardrailTriggered = false,
+            provider = "Offline Knowledge Base"
         )
     }
 }

@@ -1,26 +1,26 @@
-"""Disaster Management API Server using SQLite Lookup + Qwen2.5-1.5B Local SLM.
+"""Disaster Management API Server powered by Groq AI with Strict Safety Guardrails.
 
-Provides fast, offline-capable endpoints for disaster survival query resolution:
-- POST /api/chat: Performs SQLite FTS lookup on survival protocols and generates tailored
-                  instructions using Qwen2.5-1.5B-Instruct on local GPU.
-- POST /api/lookup: Direct SQLite FTS lookup without LLM inference (sub-millisecond).
-- GET /health: Health status and model readiness.
+Provides high-speed, reliable disaster assistance:
+- POST /api/chat: Guardrail validation -> SQLite protocol retrieval -> Groq LLM inference.
+- POST /api/guardrail/check: Standalone topic classification endpoint.
+- GET /health: Health status and Groq readiness.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import torch
+import requests
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Reconfigure stdout/stderr for Unicode safety on Windows consoles
 if sys.platform == "win32":
@@ -30,14 +30,20 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+CURRENT_DIR = Path(__file__).resolve().parent
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.insert(0, str(CURRENT_DIR))
+
 from rag.sqlite_store import DisasterSQLiteStore
 
-MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
+# Groq Configuration
+DEFAULT_GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 app = FastAPI(
-    title="Disaster Survival Management API",
-    description="SQLite FTS Protocol Lookup + Qwen2.5-1.5B Local SLM Assistant",
-    version="1.0.0",
+    title="ResQMesh Disaster AI API (Groq)",
+    description="Groq-powered Emergency Disaster Response API with strict safety guardrails",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -49,243 +55,370 @@ app.add_middleware(
 )
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
-    query: str
+    query: Optional[str] = None
+    message: Optional[str] = None
+    messages: Optional[List[ChatMessage]] = None
     language: Optional[str] = "en"
-    max_tokens: Optional[int] = 200
-    temperature: Optional[float] = 0.3
+    max_tokens: Optional[int] = 350
+    temperature: Optional[float] = 0.2
+    groq_api_key: Optional[str] = None
 
 
-class LookupRequest(BaseModel):
-    query: str
-    limit: Optional[int] = 3
+# --- Strict Disaster Safety Guardrails ---
+
+DISASTER_ALLOWLIST_KEYWORDS = [
+    # General Emergency
+    "emergency", "disaster", "crisis", "survive", "survival", "rescue", "evacuate",
+    "evacuation", "shelter", "sos", "hazard", "danger", "trapped", "help", "safe",
+    "safety", "distress", "staging", "relief", "beacon", "first aid", "first-aid",
+    
+    # Structural & Geological
+    "earthquake", "collapse", "rubble", "tremor", "aftershock", "building collapse",
+    "landslide", "mudslide", "rockfall", "avalanche", "debris", "structure", "geophone",
+    "falling debris", "under rubble",
+    
+    # Weather & Hydrological
+    "flood", "flooding", "flash flood", "water surge", "water purification", "purify water",
+    "cyclone", "hurricane", "storm", "typhoon", "tornado", "gale", "eye of storm",
+    "tsunami", "high ground", "drown", "drowning", "drinking water",
+    
+    # Thermal & Fire
+    "fire", "wildfire", "smoke", "smoke inhalation", "burn", "burns", "flames", "extinguisher",
+    "gas leak", "electrical shock", "downed power lines",
+    
+    # Medical First Aid
+    "bleed", "bleeding", "severe bleeding", "blood", "tourniquet", "fracture", "broken bone",
+    "splint", "cpr", "choking", "unconscious", "shock", "hypothermia", "heatstroke",
+    "wound", "bandage", "dressing", "resuscitation", "triage", "injury", "concussion",
+    
+    # Indian Languages Emergency Terms
+    "बाढ़", "पूर", "வெள்ளம்", "వరద",
+    "भूकंप", "धरणीकंप", "நிலநடுக்கம்", "భూకంపం",
+    "मलबे", "ढिगारा", "இடிபாடு", "శిథిల",
+    "आग", "आगी", "தீ", "అగ్ని",
+    "तूफान", "वादळ", "புயல்", "తుఫాను",
+    "भूस्खलन", "दरड", "நிலச்சரிவு", "కొండచరియలు",
+    "रक्त", "खून", "रक्तस्त्राव", "இரத்தம்", "రక్తం",
+    "घाव", "जखम", "காயம்", "గాయం",
+    "पानी", "पाणी", "தண்ணீர்", "నీరు",
+    "प्राथमिक उपचार", "प्रथमोपचार", "முதலுதவி", "ప్రథమ చికిత్స",
+    "बचाव", "सुरक्षा", "ఆశ్రయం", "புகலிடம்", "निवारा", "आश्रय"
+]
+
+DISASTER_BLOCKLIST_PATTERNS = [
+    r"\b(write a python script|code for|write a poem|write code|debug this code|sql injection|hack)\b",
+    r"\b(who is the president|who won the match|recipe for chocolate|joke|tell me a joke)\b",
+    r"\b(stock price|crypto price|bitcoin|cryptocurrency|investing advice|buy stocks)\b",
+    r"\b(solve this math problem|homework|essay about|movie review)\b",
+]
+
+GUARDRAIL_REJECTIONS = {
+    "en": (
+        "⚠️ **Guardrail Notice**: I am dedicated strictly to **Emergency Disaster Response and Survival Guidance**.\n\n"
+        "I can only assist with active disaster protocols, emergency first aid, search and rescue, evacuation routes, and crisis safety.\n\n"
+        "Please ask an emergency or disaster-related question."
+    ),
+    "hi": (
+        "⚠️ **सुरक्षा सूचना**: मैं केवल **आपदा आपातकालीन उत्तरजीविता और सुरक्षा** के लिए समर्पित हूँ।\n\n"
+        "मैं केवल आपदा प्रोटोकॉल, आपातकालीन प्राथमिक चिकित्सा, खोज व बचाव और निकासी संबंधी सहायता प्रदान कर सकता हूँ।\n\n"
+        "कृपया आपदा या आपातकाल से संबंधित प्रश्न पूछें।"
+    ),
+    "mr": (
+        "⚠️ **सुरक्षा सूचना**: मी केवळ **आपत्ती आपत्कालीन प्रतिसाद आणि जगण्याच्या मार्गदर्शनासाठी** समर्पित आहे.\n\n"
+        "मी फक्त आपत्ती नियम, प्रथमोपचार, शोध व बचाव आणि सुरक्षित स्थलांतर याबद्दल मार्गदर्शन करू शकतो.\n\n"
+        "कृपया आपत्कालीन किंवा आपत्तीशी संबंधित प्रश्न विचारा."
+    ),
+    "ta": (
+        "⚠️ **பாதுகாப்பு அறிவிப்பு**: நான் **பேரிடர் அவசர உதவி மற்றும் உயிர்வாழும் வழிகாட்டலுக்கு** மட்டுமே அர்ப்பணிக்கப்பட்டுள்ளேன்.\n\n"
+        "பேரிடர் நெறிமுறைகள், அவசர முதலுதவி, தேடுதல் மற்றும் மீட்பு தொடர்பான கேள்விகளுக்கு மட்டுமே நான் பதிலளிக்க முடியும்.\n\n"
+        "தயவுசெய்து பேரிடர் அல்லது அவசரநிலை தொடர்பான கேள்வியைக் கேளுங்கள்."
+    ),
+    "te": (
+        "⚠️ **భద్రతా నోటీసు**: నేను **విపత్తు అత్యవసర సహాయం మరియు మనుగడ మార్గదర్శకత్వం** కోసం మాత్రమే రూపొందించబడ్డాను.\n\n"
+        "విపత్తు నిబంధనలు, ప్రథమ చికిత్స, సహాయక చర్యలు మరియు తరలింపు గురించి మాత్రమే నేను మార్గనిర్దేశం చేయగలను.\n\n"
+        "దయచేసి విపత్తు లేదా అత్యవసర పరిస్థితికి సంబంధించిన ప్రశ్నను అడగండి."
+    )
+}
 
 
-class DisasterEngine:
-    """Manages SQLite storage and the Qwen2.5-1.5B neural model."""
+def is_disaster_query(query: str) -> bool:
+    """Pre-flight check verifying query is disaster or emergency related."""
+    q = query.lower().strip()
+    if len(q) < 3:
+        return False
 
-    def __init__(self, load_model: bool = True):
+    # Check explicit blocklist patterns first
+    for pattern in DISASTER_BLOCKLIST_PATTERNS:
+        if re.search(pattern, q, re.IGNORECASE):
+            return False
+
+    # Check disaster keywords allowlist
+    for kw in DISASTER_ALLOWLIST_KEYWORDS:
+        if kw in q:
+            return True
+
+    return False
+
+
+class GroqDisasterEngine:
+    """Disaster Assistant powered by Groq AI and SQLite Survival Protocols."""
+
+    def __init__(self):
         self.sqlite_store = DisasterSQLiteStore()
-        # Ensure database is populated
         if self.sqlite_store.count() == 0:
             self.sqlite_store.ingest_from_json(force_refresh=True)
 
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = None
-        self.model = None
-
-        if load_model:
-            self.load_model()
-
-    def load_model(self) -> None:
-        """Loads Qwen2.5-1.5B onto device."""
-        if self.model is not None:
-            return
-
-        print(f"[Engine] Loading {MODEL_ID} on {self.device}...")
-        t0 = time.time()
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID,
-            torch_dtype=torch.float16 if "cuda" in self.device else torch.float32,
-            device_map=self.device
-        )
-        self.model.eval()
-        print(f"[Engine] Model loaded in {time.time() - t0:.2f}s!")
+    def resolve_groq_key(self, request_key: Optional[str] = None) -> Optional[str]:
+        """Resolves Groq API key from request, environment, or file."""
+        if request_key and request_key.strip():
+            return request_key.strip()
+        env_key = os.environ.get("GROQ_API_KEY", "").strip()
+        if env_key:
+            return env_key
+        # Check ~/.groq_key or local .env
+        home_key_file = Path.home() / ".groq_key"
+        if home_key_file.exists():
+            return home_key_file.read_text("utf-8").strip()
+        return None
 
     def answer_query(
         self,
         query: str,
+        messages_history: Optional[List[Dict[str, str]]] = None,
         language: str = "en",
-        max_tokens: int = 200,
-        temperature: float = 0.3
+        max_tokens: int = 350,
+        temperature: float = 0.2,
+        groq_key: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Performs SQLite lookup and synthesizes response with Qwen2.5-1.5B in the requested language."""
-        # Multi-language keyword mapping for SQLite lookup
-        keyword_map = {
-            "बाढ़": "flood", "पूर": "flood", "வெள்ளம்": "flood", "వరద": "flood",
-            "भूकंप": "earthquake collapse", "धरणीकंप": "earthquake collapse", "நிலநடுக்கம்": "earthquake", "భూకంపం": "earthquake",
-            "मलबे": "rubble collapse trapped", "ढिगारा": "rubble collapse", "இடிபாடு": "rubble collapse", "శిథిల": "rubble collapse",
-            "आग": "fire smoke", "आगी": "fire smoke", "தீ": "fire smoke", "అగ్ని": "fire smoke",
-            "तूफान": "cyclone storm", "वादळ": "cyclone storm", "புயல்": "cyclone storm", "తుఫాను": "cyclone storm",
-            "भूस्खलन": "landslide mudflow", "दरड": "landslide mudflow", "நிலச்சரிவு": "landslide mudflow", "కొండచరియలు": "landslide mudflow",
-            "रक्त": "severe bleeding tourniquet", "खून": "severe bleeding", "இரத்தம்": "bleeding first aid", "రక్తం": "bleeding first aid",
-            "घाव": "wound first aid", "जखम": "wound first aid", "காயம்": "wound first aid", "గాయం": "wound first aid",
-            "पानी": "water purification", "पाणी": "water purification", "தண்ணீர்": "water purification", "నీరు": "water purification"
-        }
+        """Runs Guardrail Verification -> SQLite Retrieval -> Groq Inference."""
+        lang_code = (language or "en")[:2].lower()
+        active_groq_key = self.resolve_groq_key(groq_key)
 
-        search_query = query
-        for k, v in keyword_map.items():
-            if k in query:
-                search_query = f"{search_query} {v}"
-
-        # 1. SQLite Fast Lookup
-        matched = self.sqlite_store.search(search_query, limit=2)
-        top_protocol = matched[0] if matched else None
-
-        if not top_protocol:
-            fallback_answers = {
-                "hi": "कोई विशिष्ट आपातकालीन प्रोटोकॉल नहीं मिला। सामान्य सुरक्षा नियमों का पालन करें: ऊंचे स्थानों पर जाएं, गिरे हुए बिजली के तारों से बचें और Bitchat में SOS प्रसारित करें।",
-                "mr": "विशिष्ट आपत्कालीन नियम आढळला नाही. सामान्य सुरक्षा नियमांचे पालन करा: उंचावर जा, विजेच्या तारांपासून लांब राहा आणि Bitchat मध्ये SOS पाठवा.",
-                "ta": "குறிப்பிட்ட நெறிமுறை எதுவும் கிடைக்கவில்லை. பொதுவான பாதுகாப்பு விதிகளைப் பின்பற்றவும்: உயரமான இடத்திற்குச் செல்லுங்கள், மின் கம்பிகளிலிருந்து விலகி இருங்கள் மற்றும் Bitchat-ல் SOS சமிக்ஞை அனுப்பவும்.",
-                "te": "నిర్దిష్ట అత్యవసర నిబంధన కనుగొనబడలేదు. సాధారణ భద్రతా నియమాలను పాటించండి: ఎత్తైన ప్రాంతాలకు వెళ్లండి, విద్యుత్ తీగలకు దూరంగా ఉండండి మరియు Bitchat లో SOS ను పంపండి.",
-                "en": "No specific survival protocol found. Follow general safety instructions: seek high ground, avoid downed wires, and broadcast SOS."
-            }
-            lang_code = (language or "en")[:2].lower()
+        # 1. Safety Guardrail Verification
+        if not is_disaster_query(query):
+            rejection_text = GUARDRAIL_REJECTIONS.get(lang_code, GUARDRAIL_REJECTIONS["en"])
             return {
-                "answer": fallback_answers.get(lang_code, fallback_answers["en"]),
-                "matched_protocol": "General Emergency",
-                "category": "General",
-                "critical_warning": None,
+                "answer": rejection_text,
+                "is_disaster_related": False,
+                "guardrail_triggered": True,
+                "matched_protocol": None,
+                "category": "Guardrail Notice",
+                "critical_warning": "Non-disaster query rejected by safety guardrail.",
                 "actions": "",
                 "sources": []
             }
 
-        title = top_protocol.get("title", "Disaster Protocol")
-        category = top_protocol.get("category", "General")
-        warning = top_protocol.get("critical_warning", "")
-        actions = top_protocol.get("actions", "")
+        # 2. SQLite RAG Protocol Retrieval
+        matched = self.sqlite_store.search(query, limit=2)
+        top_protocol = matched[0] if matched else None
 
-        context_lines = []
+        title = top_protocol.get("title", "Disaster Emergency") if top_protocol else "Emergency Protocol"
+        category = top_protocol.get("category", "Safety") if top_protocol else "Safety"
+        warning = top_protocol.get("critical_warning", "") if top_protocol else None
+        actions = top_protocol.get("actions", "") if top_protocol else ""
+
+        context_blocks = []
         if warning:
-            context_lines.append(f"CRITICAL LIFE-SAFETY WARNING: {warning}")
+            context_blocks.append(f"CRITICAL LIFE-SAFETY WARNING: {warning}")
         if actions:
-            context_lines.append(f"VERIFIED EMERGENCY ACTIONS:\n{actions}")
+            context_blocks.append(f"VERIFIED PROTOCOL ACTIONS:\n{actions}")
 
-        context_text = "\n\n".join(context_lines)
+        context_text = "\n\n".join(context_blocks)
 
-        # Language-specific system prompt instruction
-        lang_code = (language or "en")[:2].lower()
+        # Language-specific system directive
         lang_directives = {
-            "hi": "Respond entirely and fluently in pure Hindi (हिंदी). Use clear Devanagari script. Do NOT reply in English.",
-            "mr": "Respond entirely and fluently in pure Marathi (मराठी). Use clear Devanagari script. Do NOT reply in English.",
-            "ta": "Respond entirely and fluently in pure Tamil (தமிழ்). Use clear Tamil script. Do NOT reply in English.",
-            "te": "Respond entirely and fluently in pure Telugu (తెలుగు). Use clear Telugu script. Do NOT reply in English.",
+            "hi": "Respond entirely and fluently in pure Hindi (हिंदी). Use clear Devanagari script.",
+            "mr": "Respond entirely and fluently in pure Marathi (मराठी). Use clear Devanagari script.",
+            "ta": "Respond entirely and fluently in pure Tamil (தமிழ்). Use clear Tamil script.",
+            "te": "Respond entirely and fluently in pure Telugu (తెలుగు). Use clear Telugu script.",
             "en": "Respond directly and clearly in English."
         }
         lang_directive = lang_directives.get(lang_code, "Respond directly and clearly in English.")
 
-        # 2. Qwen2.5-1.5B prompt formulation
+        # 3. If no Groq key is configured, provide structured synthesis from SQLite knowledge base
+        if not active_groq_key:
+            return self._synthesize_local_rag(query, top_protocol, lang_code)
+
+        # 4. Formulate Groq Prompt with Safety Guardrails
         system_prompt = (
-            f"You are a disaster emergency survival assistant. {lang_directive} "
-            "Answer the user's question directly, concisely, and with life-saving accuracy using the verified emergency data provided below. "
-            "Always state any critical warning first in bold, followed by 2-4 immediate action bullet points in the requested language."
+            f"You are the ResQMesh Emergency Disaster Response Specialist AI powered by Groq. {lang_directive}\n\n"
+            "STRICT SAFETY GUARDRAIL:\n"
+            "You are strictly programmed to ONLY assist with active disaster emergencies, survival protocols, "
+            "emergency first aid, search and rescue, evacuation, emergency shelters, and disaster preparedness.\n"
+            "Under NO circumstances should you assist with non-emergency topics. If the query deviates from disaster "
+            "safety, politely decline and redirect the user back to disaster survival.\n\n"
+            "EMERGENCY INSTRUCTION RULES:\n"
+            "1. Put the single most critical, life-saving action in the FIRST sentence in bold.\n"
+            "2. Highlight any lethal danger clearly with '⚠️ DANGER / WARNING'.\n"
+            "3. Keep instructions concise, direct, and numbered or bulleted.\n"
+            "4. Ground your guidance in verified emergency protocols.\n"
+            "5. Remind the user to activate their offline mesh SOS beacon if trapped or in peril."
         )
 
-        user_content = f"VERIFIED EMERGENCY DATA:\n{context_text}\n\nUSER QUESTION: {query}"
+        groq_messages = [{"role": "system", "content": system_prompt}]
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ]
+        # Include recent multi-turn history if present
+        if messages_history:
+            for m in messages_history[-4:]:
+                groq_messages.append({"role": m["role"], "content": m["content"]})
 
-        if self.model is None:
-            self.load_model()
+        user_content = f"VERIFIED EMERGENCY KNOWLEDGE BASE:\n{context_text}\n\nUSER EMERGENCY QUESTION: {query}"
+        groq_messages.append({"role": "user", "content": user_content})
 
-        prompt_text = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = self.tokenizer([prompt_text], return_tensors="pt").to(self.model.device)
+        try:
+            payload = {
+                "model": DEFAULT_GROQ_MODEL,
+                "messages": groq_messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            headers = {
+                "Authorization": f"Bearer {active_groq_key}",
+                "Content-Type": "application/json"
+            }
+            resp = requests.post(GROQ_API_URL, json=payload, headers=headers, timeout=12)
 
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                do_sample=(temperature > 0.0)
-            )
+            if resp.status_code == 200:
+                data = resp.json()
+                generated_answer = data["choices"][0]["message"]["content"].strip()
+                return {
+                    "answer": generated_answer,
+                    "is_disaster_related": True,
+                    "guardrail_triggered": False,
+                    "matched_protocol": title,
+                    "category": category,
+                    "critical_warning": warning,
+                    "actions": actions,
+                    "sources": [m.get("title", "") for m in matched],
+                    "model": DEFAULT_GROQ_MODEL,
+                    "provider": "Groq"
+                }
+            else:
+                print(f"[Groq API Error] HTTP {resp.status_code}: {resp.text}")
+        except Exception as e:
+            print(f"[Groq API Call Failed]: {e}")
 
-        gen_tokens = outputs[0][len(inputs.input_ids[0]):]
-        answer = self.tokenizer.decode(gen_tokens, skip_special_tokens=True).strip()
+        # Fallback to local RAG synthesis if Groq call encounters network/key error
+        return self._synthesize_local_rag(query, top_protocol, lang_code)
+
+    def _synthesize_local_rag(self, query: str, top_protocol: Optional[Dict[str, Any]], lang_code: str) -> Dict[str, Any]:
+        """Instant structured fallback synthesis using verified SQLite protocol records."""
+        if not top_protocol:
+            fallback_answers = {
+                "hi": "कोई विशिष्ट आपातकालीन प्रोटोकॉल नहीं मिला। ऊंचे स्थानों पर जाएं, गिरे हुए बिजली के तारों से बचें और Bitchat में SOS प्रसारित करें।",
+                "mr": "विशिष्ट आपत्कालीन नियम आढळला नाही. उंचावर जा, विजेच्या तारांपासून लांब राहा आणि Bitchat मध्ये SOS पाठवा.",
+                "ta": "குறிப்பிட்ட நெறிமுறை கிடைக்கவில்லை. உயரமான இடத்திற்குச் செல்லுங்கள் மற்றும் Bitchat-ல் SOS சமிக்ஞை அனுப்பவும்.",
+                "te": "నిర్దిష్ట అత్యవసర నిబంధన కనుగొనబడలేదు. ఎత్తైన ప్రాంతాలకు వెళ్లండి మరియు Bitchat లో SOS ను పంపండి.",
+                "en": "Seek secure high ground immediately, stay away from downed power lines, and broadcast your SOS beacon in Bitchat."
+            }
+            return {
+                "answer": fallback_answers.get(lang_code, fallback_answers["en"]),
+                "is_disaster_related": True,
+                "guardrail_triggered": False,
+                "matched_protocol": "General Emergency",
+                "category": "Safety",
+                "critical_warning": None,
+                "actions": "",
+                "sources": [],
+                "provider": "Offline Knowledge Base"
+            }
+
+        title = top_protocol.get("title", "Disaster Protocol")
+        warning = top_protocol.get("critical_warning", "")
+        actions = top_protocol.get("actions", "")
+
+        lines = [f"📋 **{title} Instructions**:"]
+        if warning:
+            lines.insert(0, f"⚠️ **CRITICAL WARNING**: {warning}\n")
+        lines.append(actions)
+        lines.append("\n📡 *Tip: Tap the red SOS button in Bitchat to broadcast your coordinates to nearby rescue nodes.*")
 
         return {
-            "answer": answer,
+            "answer": "\n".join(lines),
+            "is_disaster_related": True,
+            "guardrail_triggered": False,
             "matched_protocol": title,
-            "category": category,
+            "category": top_protocol.get("category", "Disaster"),
             "critical_warning": warning,
             "actions": actions,
-            "sources": [m.get("title", "") for m in matched]
+            "sources": [title],
+            "provider": "Offline Knowledge Base"
         }
 
 
-# Global engine instance
-engine: Optional[DisasterEngine] = None
-
-
-def get_engine() -> DisasterEngine:
-    global engine
-    if engine is None:
-        engine = DisasterEngine(load_model=True)
-    return engine
+engine = GroqDisasterEngine()
 
 
 @app.get("/health")
 def health_check() -> Dict[str, Any]:
-    eng = get_engine()
+    key_configured = bool(engine.resolve_groq_key())
     return {
         "status": "healthy",
-        "model": MODEL_ID,
-        "device": eng.device,
-        "sqlite_entries": eng.sqlite_store.count(),
+        "provider": "Groq",
+        "model": DEFAULT_GROQ_MODEL,
+        "groq_key_configured": key_configured,
+        "guardrails": "active",
+        "sqlite_entries": engine.sqlite_store.count(),
         "timestamp": time.time()
     }
 
 
-@app.post("/api/chat")
-def api_chat(req: ChatRequest) -> Dict[str, Any]:
-    if not req.query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-    eng = get_engine()
-    return eng.answer_query(
-        query=req.query,
-        language=req.language or "en",
-        max_tokens=req.max_tokens or 200,
-        temperature=req.temperature or 0.3
-    )
-
-
-@app.post("/api/lookup")
-def api_lookup(req: LookupRequest) -> Dict[str, Any]:
-    if not req.query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-    eng = get_engine()
-    results = eng.sqlite_store.search(req.query, limit=req.limit or 3)
+@app.post("/api/guardrail/check")
+def check_guardrail(req: Dict[str, str]) -> Dict[str, Any]:
+    query = req.get("query") or req.get("message") or ""
+    allowed = is_disaster_query(query)
     return {
-        "query": req.query,
-        "count": len(results),
-        "results": results
+        "query": query,
+        "allowed": allowed,
+        "reason": "Disaster emergency topic" if allowed else "Query rejected: Not disaster or emergency related."
     }
 
 
-def run_tests() -> None:
-    """Automated verification of SQLite lookup and Qwen2.5-1.5B inference."""
-    eng = get_engine()
-    test_queries = [
-        "Help! I am trapped under rubble after a building collapse!",
-        "The cyclone eye is passing and it's quiet. Can we go outside?",
-        "How do I purify flood water for drinking?",
-        "A severe landslide is sliding towards our mountain road, what to do?"
-    ]
+@app.post("/api/chat")
+def api_chat(
+    req: ChatRequest,
+    x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-Api-Key")
+) -> Dict[str, Any]:
+    query_text = (req.query or req.message or "").strip()
+    if not query_text and req.messages:
+        query_text = req.messages[-1].content.strip()
 
-    print("\n=== Testing SQLite Lookup + Qwen2.5-1.5B Disaster Engine ===")
-    for q in test_queries:
-        print(f"\n>>> Query: '{q}'")
-        t0 = time.time()
-        res = eng.answer_query(q)
-        dt = time.time() - t0
-        print(f"Matched: {res['matched_protocol']} ({res['category']}) in {dt:.2f}s")
-        if res['critical_warning']:
-            print(f"⚠️ Warning: {res['critical_warning']}")
-        print(f"AI Answer:\n{res['answer']}\n{'-'*50}")
+    if not query_text:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    history_dicts = None
+    if req.messages:
+        history_dicts = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
+
+    groq_key = req.groq_api_key or x_groq_api_key
+
+    return engine.answer_query(
+        query=query_text,
+        messages_history=history_dicts,
+        language=req.language or "en",
+        max_tokens=req.max_tokens or 350,
+        temperature=req.temperature or 0.2,
+        groq_key=groq_key
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Disaster Management SQLite + Qwen2.5-1.5B API Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host address to bind")
-    parser.add_argument("--port", type=int, default=8800, help="Port to listen on")
-    parser.add_argument("--test", action="store_true", help="Run self-tests and exit")
+    parser = argparse.ArgumentParser(description="ResQMesh Groq Disaster AI API Server")
+    parser.add_argument("--port", type=int, default=8800, help="HTTP port (default: 8800)")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address (default: 0.0.0.0)")
     args = parser.parse_args()
 
-    if args.test:
-        run_tests()
-    else:
-        print(f"Starting Disaster Management API Server on {args.host}:{args.port}...")
-        uvicorn.run(app, host=args.host, port=args.port)
+    print(f"\n=======================================================")
+    print(f" ResQMesh Disaster AI Server (Groq)")
+    print(f" Model:       {DEFAULT_GROQ_MODEL}")
+    print(f" Guardrails:  ACTIVE (Disaster & Emergency Only)")
+    print(f" Address:     http://{args.host}:{args.port}")
+    print(f"=======================================================\n")
+
+    uvicorn.run(app, host=args.host, port=args.port)

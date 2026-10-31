@@ -23,19 +23,17 @@ import androidx.compose.ui.unit.dp
 import com.bitchat.android.model.Role
 import com.bitchat.android.model.localizedName
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.ui.res.stringResource
+import com.bitchat.android.R
+
 /**
- * Emergency-response role filter row. Renders one chip per consumer role plus an
- * "All" chip. Chips are mutually inclusive: when nothing is selected the mesh timeline shows
- * every broadcast (legacy [Role.UNSET] included); once any role chip is selected only messages
- * tagged with that role (plus untagged legacy traffic) are surfaced by [ChatViewModel]'s
- * public-messages collector.
- *
- * The row is horizontally scrollable so even the widest role label ("Ambulance") never
- * wraps or clips inside the chip on narrow screens.
- *
- * All four consumer roles are rendered unconditionally so a responder arriving on scene can
- * pre-subscribe to GOV / AMBULANCE alerts before any such peer has been observed; the row
- * shows the full catalog of responder traffic this node is willing to receive.
+ * Emergency-response role filter row. Renders a sidebar toggle ("3 lines" / hamburger)
+ * followed by an "All" chip and one chip per consumer role.
  */
 @Composable
 fun RoleFilterRow(
@@ -43,6 +41,7 @@ fun RoleFilterRow(
     availableRoles: Set<Role>,
     onToggle: (Role) -> Unit,
     onClearAll: () -> Unit,
+    onOpenSidebar: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -50,34 +49,60 @@ fun RoleFilterRow(
         modifier = modifier
             .fillMaxWidth()
             .height(44.dp)
-            .horizontalScroll(rememberScrollState()),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
     ) {
-        // "All": highlighted when the subscription set is empty
-        FilterChip(
-            selected = selectedRoles.isEmpty(),
-            onClick = onClearAll,
-            label = { Text(com.bitchat.android.model.Role.UNSET.localizedName()) },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = colorScheme.primary,
-                selectedLabelColor = colorScheme.onPrimary
-            ),
-            shape = CircleShape
-        )
-        // One chip per non-UNSET role, unconditionally so responders can pre-subscribe.
-        // FilterChip auto-sizes to its label (single-line), so the chip never wraps the text.
-        availableRoles.forEach { role ->
+        // "3 lines" (hamburger menu icon) before "All" to open the sidebar
+        Surface(
+            onClick = onOpenSidebar,
+            shape = CircleShape,
+            color = colorScheme.surfaceVariant.copy(alpha = 0.7f),
+            contentColor = colorScheme.onSurface,
+            modifier = Modifier.size(34.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = stringResource(R.string.open_sidebar),
+                    modifier = Modifier.size(20.dp),
+                    tint = colorScheme.onSurface
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
+        ) {
+            // "All": highlighted when the subscription set is empty
             FilterChip(
-                selected = role in selectedRoles,
-                onClick = { onToggle(role) },
-                label = { Text(role.localizedName(), maxLines = 1) },
+                selected = selectedRoles.isEmpty(),
+                onClick = onClearAll,
+                label = { Text(com.bitchat.android.model.Role.UNSET.localizedName()) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = roleAccent(role, colorScheme.primary),
-                    selectedLabelColor = Color.White
+                    selectedContainerColor = colorScheme.primary,
+                    selectedLabelColor = colorScheme.onPrimary
                 ),
                 shape = CircleShape
             )
+            // One chip per non-UNSET role, unconditionally so responders can pre-subscribe.
+            // FilterChip auto-sizes to its label (single-line), so the chip never wraps the text.
+            availableRoles.forEach { role ->
+                FilterChip(
+                    selected = role in selectedRoles,
+                    onClick = { onToggle(role) },
+                    label = { Text(role.localizedName(), maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = roleAccent(role, colorScheme.primary),
+                        selectedLabelColor = Color.White
+                    ),
+                    shape = CircleShape
+                )
+            }
         }
     }
 }

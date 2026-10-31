@@ -692,4 +692,23 @@
   <string name="shelter_send_sos_beacon">🆘 Send SOS Beacon</string>
   <string name="shelter_open_map">Open Map</string>
   <string name="survival_guide_disclaimer">All protocols compiled for offline disaster emergency reference.</string>
+  <string name="sidebar_tools_and_safety">Tools &amp; Emergency</string>
+  <string name="sidebar_tools_and_safety_sub">Offline navigation, survival guides &amp; shelter staging</string>
+  <string name="sidebar_offline_map">Offline Tactical Map</string>
+  <string name="sidebar_offline_map_desc">View shelters, responders &amp; live incidents</string>
+  <string name="sidebar_shelters">Shelters &amp; Safe Zones</string>
+  <string name="sidebar_shelters_desc">Safe zones, shelter capacities &amp; distress staging</string>
+  <string name="sidebar_survival_guide_desc">Protocols for collapse, flood, cyclone &amp; first aid</string>
+  <string name="sidebar_ai_chatbot">Disaster AI Chatbot</string>
+  <string name="sidebar_ai_chatbot_desc">Real-time emergency assistant powered by Groq</string>
+  <string name="ai_chatbot_title">Disaster AI Assistant</string>
+  <string name="ai_chatbot_subtitle">Groq Llama-3.3 • Emergency Guardrails Active</string>
+  <string name="ai_chatbot_guardrail_banner">🛡️ Emergency Guardrail Active: Only disaster survival, first aid, and rescue questions are permitted.</string>
+  <string name="ai_chatbot_input_hint">Ask an emergency question...</string>
+  <string name="ai_chatbot_welcome">Hello, I am your Emergency Disaster Response Assistant powered by Groq. I can assist with immediate survival protocols, trauma first aid, evacuation steps, and disaster updates. What is your emergency?</string>
+  <string name="ai_chatbot_settings_title">Disaster AI Settings</string>
+  <string name="ai_chatbot_groq_key_label">Groq API Key (Optional)</string>
+  <string name="ai_chatbot_server_url_label">Backend Server URL</string>
+  <string name="open_sidebar">Open Sidebar</string>
 </resources>
+

@@ -43,6 +43,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import com.bitchat.android.ui.theme.BitchatFontFamily
+import com.bitchat.android.ui.AboutCardShape
+import com.bitchat.android.ui.AboutHorizontalPadding
+import com.bitchat.android.ui.theme.LocalBitchatPalette
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -442,15 +445,15 @@ fun SurvivalGuideScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.survival_guide_title),
-                                style = MaterialTheme.typography.titleMedium,
                                 fontFamily = BitchatFontFamily,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colorScheme.onSurface
                             )
                             Text(
                                 text = stringResource(R.string.survival_guide_subtitle),
-                                style = MaterialTheme.typography.bodySmall,
                                 fontFamily = BitchatFontFamily,
+                                fontSize = 12.sp,
                                 color = colorScheme.onSurfaceVariant
                             )
                         }
@@ -466,8 +469,8 @@ fun SurvivalGuideScreen(
                         placeholder = {
                             Text(
                                 stringResource(R.string.survival_guide_search_hint),
-                                style = MaterialTheme.typography.bodySmall,
                                 fontFamily = BitchatFontFamily,
+                                fontSize = 13.sp,
                                 color = colorScheme.onSurfaceVariant
                             )
                         },
@@ -492,8 +495,11 @@ fun SurvivalGuideScreen(
                             }
                         },
                         singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
+                        shape = RoundedCornerShape(12.dp),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = BitchatFontFamily,
+                            fontSize = 13.sp
+                        ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = colorScheme.primary,
                             unfocusedBorderColor = colorScheme.outline
@@ -516,13 +522,14 @@ fun SurvivalGuideScreen(
                                     Text(
                                         cat,
                                         fontFamily = BitchatFontFamily,
-                                        style = MaterialTheme.typography.labelSmall
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selectedCategoryIndex == idx) FontWeight.SemiBold else FontWeight.Normal
                                     )
                                 },
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = colorScheme.secondaryContainer,
-                                    selectedLabelColor = colorScheme.onSecondaryContainer,
+                                    selectedContainerColor = colorScheme.primary.copy(alpha = 0.15f),
+                                    selectedLabelColor = colorScheme.primary,
                                     containerColor = colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                     labelColor = colorScheme.onSurfaceVariant
                                 )
@@ -536,39 +543,40 @@ fun SurvivalGuideScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = 14.dp,
-                    end = 14.dp,
-                    top = 10.dp,
-                    bottom = 24.dp
+                    start = AboutHorizontalPadding,
+                    end = AboutHorizontalPadding,
+                    top = 12.dp,
+                    bottom = 32.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Quick SOS banner
                 item(key = "quick_banner") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = AboutCardShape,
                         color = colorScheme.errorContainer,
                         border = BorderStroke(1.dp, colorScheme.error.copy(alpha = 0.35f))
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("🚨", fontSize = 22.sp)
-                            Spacer(Modifier.width(10.dp))
-                            Column {
+                            Text("🚨", fontSize = 18.sp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
                                     text = stringResource(R.string.survival_guide_quick_crisis),
-                                    style = MaterialTheme.typography.titleSmall,
                                     fontFamily = BitchatFontFamily,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = colorScheme.onErrorContainer
                                 )
                                 Text(
                                     text = stringResource(R.string.survival_guide_quick_crisis_desc),
-                                    style = MaterialTheme.typography.bodySmall,
                                     fontFamily = BitchatFontFamily,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
                                     color = colorScheme.onErrorContainer.copy(alpha = 0.85f)
                                 )
                             }
@@ -580,27 +588,30 @@ fun SurvivalGuideScreen(
                 item(key = "disaster_ai_assistant") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = AboutCardShape,
+                        color = colorScheme.surface,
                         border = BorderStroke(1.dp, colorScheme.outlineVariant)
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
                                         text = stringResource(R.string.survival_guide_ai_title),
-                                        style = MaterialTheme.typography.titleSmall,
                                         fontFamily = BitchatFontFamily,
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colorScheme.onSurface
                                     )
                                     Text(
                                         text = stringResource(R.string.survival_guide_ai_subtitle),
-                                        style = MaterialTheme.typography.labelSmall,
                                         fontFamily = BitchatFontFamily,
+                                        fontSize = 12.sp,
                                         color = colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -620,7 +631,7 @@ fun SurvivalGuideScreen(
                                 }
                             }
 
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
 
                             // Query input row
                             Row(
@@ -634,14 +645,17 @@ fun SurvivalGuideScreen(
                                     placeholder = {
                                         Text(
                                             stringResource(R.string.survival_guide_ai_hint),
-                                            style = MaterialTheme.typography.bodySmall,
                                             fontFamily = BitchatFontFamily,
+                                            fontSize = 13.sp,
                                             color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
                                     },
                                     singleLine = true,
-                                    shape = RoundedCornerShape(8.dp),
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
+                                    shape = RoundedCornerShape(10.dp),
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = BitchatFontFamily,
+                                        fontSize = 13.sp
+                                    ),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = colorScheme.primary,
                                         unfocusedBorderColor = colorScheme.outline
@@ -659,7 +673,7 @@ fun SurvivalGuideScreen(
                                         }
                                     },
                                     enabled = aiQuery.isNotBlank() && !isAiLoading,
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = colorScheme.primary,
                                         contentColor = colorScheme.onPrimary
@@ -700,8 +714,8 @@ fun SurvivalGuideScreen(
                             ) {
                                 quickSuggestions.forEach { suggestion ->
                                     Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = colorScheme.surface,
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                         border = BorderStroke(1.dp, colorScheme.outlineVariant),
                                         modifier = Modifier.clickable {
                                             aiQuery = suggestion
@@ -714,9 +728,9 @@ fun SurvivalGuideScreen(
                                     ) {
                                         Text(
                                             text = suggestion,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                                             fontFamily = BitchatFontFamily,
+                                            fontSize = 12.sp,
                                             color = colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -728,11 +742,11 @@ fun SurvivalGuideScreen(
                                 Spacer(Modifier.height(10.dp))
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = colorScheme.surface,
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = colorScheme.surfaceVariant.copy(alpha = 0.35f),
                                     border = BorderStroke(1.dp, colorScheme.outlineVariant)
                                 ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -762,14 +776,15 @@ fun SurvivalGuideScreen(
                                             Spacer(Modifier.height(6.dp))
                                             Surface(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(6.dp),
+                                                shape = RoundedCornerShape(8.dp),
                                                 color = colorScheme.errorContainer
                                             ) {
                                                 Text(
                                                     text = "⚠️ $warn",
                                                     modifier = Modifier.padding(8.dp),
-                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontFamily = BitchatFontFamily,
+                                                    fontSize = 12.sp,
+                                                    lineHeight = 16.sp,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = colorScheme.onErrorContainer
                                                 )
@@ -779,18 +794,18 @@ fun SurvivalGuideScreen(
                                         Spacer(Modifier.height(8.dp))
                                         Text(
                                             text = resp.answer,
-                                            style = MaterialTheme.typography.bodySmall,
                                             fontFamily = BitchatFontFamily,
-                                            color = colorScheme.onSurface,
-                                            lineHeight = 18.sp
+                                            fontSize = 13.sp,
+                                            lineHeight = 18.sp,
+                                            color = colorScheme.onSurface
                                         )
 
                                         resp.matchedProtocol?.let { proto ->
                                             Spacer(Modifier.height(6.dp))
                                             Text(
                                                 text = "Protocol: $proto",
-                                                style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = BitchatFontFamily,
+                                                fontSize = 11.sp,
                                                 color = colorScheme.onSurfaceVariant
                                             )
                                         }
@@ -811,8 +826,9 @@ fun SurvivalGuideScreen(
                         ) {
                             Text(
                                 "No survival tips matched your search.\nTry searching for 'earthquake', 'bleed', 'fire', or 'water'.",
-                                style = MaterialTheme.typography.bodyMedium,
                                 fontFamily = BitchatFontFamily,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
                                 color = colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
@@ -827,7 +843,7 @@ fun SurvivalGuideScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .animateContentSize(),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = AboutCardShape,
                         color = colorScheme.surface,
                         border = BorderStroke(1.dp, colorScheme.outlineVariant)
                     ) {
@@ -843,23 +859,27 @@ fun SurvivalGuideScreen(
                                             expandedSectionIds + section.id
                                         }
                                     }
-                                    .padding(12.dp),
+                                    .padding(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(section.emoji, fontSize = 22.sp)
-                                Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                Text(section.emoji, fontSize = 18.sp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
                                         text = section.title,
-                                        style = MaterialTheme.typography.titleMedium,
                                         fontFamily = BitchatFontFamily,
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = colorScheme.onSurface
                                     )
                                     Text(
                                         text = section.summary,
-                                        style = MaterialTheme.typography.bodySmall,
                                         fontFamily = BitchatFontFamily,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
                                         color = colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -875,21 +895,22 @@ fun SurvivalGuideScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                                        .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     // Critical Alert Callout
                                     if (section.criticalAlert != null) {
                                         Surface(
-                                            shape = RoundedCornerShape(8.dp),
+                                            shape = RoundedCornerShape(10.dp),
                                             color = colorScheme.errorContainer,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text(
                                                 text = "⚠️ ${section.criticalAlert}",
                                                 modifier = Modifier.padding(10.dp),
-                                                style = MaterialTheme.typography.bodySmall,
                                                 fontFamily = BitchatFontFamily,
+                                                fontSize = 12.sp,
+                                                lineHeight = 17.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = colorScheme.onErrorContainer
                                             )
@@ -903,16 +924,16 @@ fun SurvivalGuideScreen(
                                                 .fillMaxWidth()
                                                 .background(
                                                     colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                                    RoundedCornerShape(8.dp)
+                                                    RoundedCornerShape(10.dp)
                                                 )
                                                 .padding(10.dp),
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Text(
                                                 text = step.phase,
-                                                style = MaterialTheme.typography.labelMedium,
                                                 fontFamily = BitchatFontFamily,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = colorScheme.primary
                                             )
                                             step.tips.forEach { tip ->
@@ -922,18 +943,18 @@ fun SurvivalGuideScreen(
                                                 ) {
                                                     Text(
                                                         "•",
-                                                        style = MaterialTheme.typography.bodySmall,
                                                         fontFamily = BitchatFontFamily,
+                                                        fontSize = 13.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = colorScheme.primary,
                                                         modifier = Modifier.padding(end = 6.dp)
                                                     )
                                                     Text(
                                                         text = tip,
-                                                        style = MaterialTheme.typography.bodySmall,
                                                         fontFamily = BitchatFontFamily,
-                                                        color = colorScheme.onSurface,
-                                                        lineHeight = 18.sp
+                                                        fontSize = 13.sp,
+                                                        lineHeight = 18.sp,
+                                                        color = colorScheme.onSurface
                                                     )
                                                 }
                                             }
@@ -956,8 +977,9 @@ fun SurvivalGuideScreen(
                     ) {
                         Text(
                             stringResource(R.string.survival_guide_disclaimer),
-                            style = MaterialTheme.typography.labelSmall,
                             fontFamily = BitchatFontFamily,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
                             color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
@@ -974,7 +996,8 @@ fun SurvivalGuideScreen(
                     Text(
                         "Disaster AI Server Config",
                         fontFamily = BitchatFontFamily,
-                        style = MaterialTheme.typography.titleMedium
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 },
                 text = {
@@ -989,10 +1012,13 @@ fun SurvivalGuideScreen(
                         OutlinedTextField(
                             value = serverUrlInput,
                             onValueChange = { serverUrlInput = it },
-                            label = { Text("Server URL", fontFamily = BitchatFontFamily) },
-                            placeholder = { Text("http://192.168.1.xxx:8800", fontFamily = BitchatFontFamily) },
+                            label = { Text("Server URL", fontFamily = BitchatFontFamily, fontSize = 12.sp) },
+                            placeholder = { Text("http://192.168.1.xxx:8800", fontFamily = BitchatFontFamily, fontSize = 12.sp) },
                             singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = BitchatFontFamily),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = BitchatFontFamily,
+                                fontSize = 13.sp
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(6.dp))
@@ -1015,12 +1041,12 @@ fun SurvivalGuideScreen(
                             contentColor = colorScheme.onPrimary
                         )
                     ) {
-                        Text("Save", fontFamily = BitchatFontFamily)
+                        Text("Save", fontFamily = BitchatFontFamily, fontSize = 13.sp)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showAiSettingsDialog = false }) {
-                        Text("Cancel", fontFamily = BitchatFontFamily, color = colorScheme.onSurfaceVariant)
+                        Text("Cancel", fontFamily = BitchatFontFamily, fontSize = 13.sp, color = colorScheme.onSurfaceVariant)
                     }
                 }
             )

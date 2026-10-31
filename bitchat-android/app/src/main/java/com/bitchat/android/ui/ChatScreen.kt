@@ -98,6 +98,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var showShelterSheet by remember { mutableStateOf(false) }
     var showMapPage by remember { mutableStateOf(false) }
     var showSurvivalGuide by remember { mutableStateOf(false) }
+    var showAiChatbot by remember { mutableStateOf(false) }
     var showUserSheet by remember { mutableStateOf(false) }
     var selectedUserForSheet by remember { mutableStateOf("") }
     var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
@@ -291,23 +292,6 @@ if (isMeshTimeline) {
                       .fillMaxWidth()
                       .padding(top = 88.dp)
               ) {
-                  Row(
-                      modifier = Modifier
-                          .fillMaxWidth()
-                          .padding(horizontal = 12.dp, vertical = 4.dp),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      verticalAlignment = Alignment.CenterVertically
-                  ) {
-                      androidx.compose.material3.TextButton(onClick = { showShelterSheet = true }) {
-                          androidx.compose.material3.Text("Shelters ${if (viewModel.shelters.value.isNotEmpty()) "(${viewModel.shelters.value.size})" else ""}")
-                      }
-                      androidx.compose.material3.TextButton(onClick = { showMapPage = true }) {
-                          androidx.compose.material3.Text("Map 🗺️")
-                      }
-                      androidx.compose.material3.TextButton(onClick = { showSurvivalGuide = true }) {
-                          androidx.compose.material3.Text("Guide 🛡️")
-                      }
-                  }
                   RoleFilterRow(
                       selectedRoles = subscribedRoles,
                       availableRoles = setOf(
@@ -319,7 +303,8 @@ if (isMeshTimeline) {
                           com.bitchat.android.model.Role.RESCUE
                       ),
                       onToggle = viewModel::toggleSubscribedRole,
-                      onClearAll = viewModel::clearSubscribedRoles
+                      onClearAll = viewModel::clearSubscribedRoles,
+                      onOpenSidebar = { viewModel.showMeshPeerList() }
                   )
               }
           }
@@ -607,6 +592,10 @@ if (isMeshTimeline) {
         onSecurityVerificationSheetDismiss = viewModel::hideSecurityVerificationSheet,
         showMeshPeerListSheet = showMeshPeerListSheet,
         onMeshPeerListDismiss = viewModel::hideMeshPeerList,
+        onOpenMap = { showMapPage = true },
+        onOpenGuide = { showSurvivalGuide = true },
+        onOpenShelters = { showShelterSheet = true },
+        onOpenAiChatbot = { showAiChatbot = true },
     )
 
     ShelterSheet(
@@ -672,6 +661,13 @@ if (isMeshTimeline) {
     if (showSurvivalGuide) {
         com.bitchat.android.ui.guide.SurvivalGuideScreen(
             onBack = { showSurvivalGuide = false },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+
+    if (showAiChatbot) {
+        com.bitchat.android.ui.guide.DisasterChatbotScreen(
+            onBack = { showAiChatbot = false },
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -953,6 +949,10 @@ private fun ChatDialogs(
     onSecurityVerificationSheetDismiss: () -> Unit,
     showMeshPeerListSheet: Boolean,
     onMeshPeerListDismiss: () -> Unit,
+    onOpenMap: () -> Unit = {},
+    onOpenGuide: () -> Unit = {},
+    onOpenShelters: () -> Unit = {},
+    onOpenAiChatbot: () -> Unit = {},
 ) {
     val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
 
@@ -1035,7 +1035,11 @@ private fun ChatDialogs(
             onShowVerification = {
                 onMeshPeerListDismiss()
                 viewModel.showVerificationSheet(fromSidebar = true)
-            }
+            },
+            onOpenMap = onOpenMap,
+            onOpenGuide = onOpenGuide,
+            onOpenShelters = onOpenShelters,
+            onOpenAiChatbot = onOpenAiChatbot
         )
     }
 

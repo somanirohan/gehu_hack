@@ -45,22 +45,17 @@ STRICT PROTOCOLS:
 
 
 class DisasterChatbot:
-    """RAG + SLM Chatbot for offline disaster response."""
+    """RAG + Groq AI Chatbot for disaster survival response."""
 
     def __init__(
         self,
         vector_store: Optional[DisasterVectorStore] = None,
-        model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
-        device: str = "auto",
-        use_lightweight_slm: bool = False
+        model_id: str = "llama-3.3-70b-versatile",
+        groq_api_key: Optional[str] = None
     ):
         self.vector_store = vector_store or DisasterVectorStore()
         self.model_id = model_id
-        self.device = device
-        self.use_lightweight_slm = use_lightweight_slm
-        self._model = None
-        self._tokenizer = None
-        self._lock = threading.Lock()
+        self.groq_api_key = groq_api_key or os.environ.get("GROQ_API_KEY", "")
 
         # Ensure vector DB is populated
         if self.vector_store.count() == 0:
@@ -70,35 +65,8 @@ class DisasterChatbot:
         """Retrieves top matching survival protocol chunks from the local vector DB."""
         return self.vector_store.query(user_query, n_results=n_results)
 
-    def format_prompt(self, user_query: str, context_chunks: List[Dict[str, Any]]) -> str:
-        """Assembles prompt with verified context for the language model."""
-        context_text = ""
-        for i, chunk in enumerate(context_chunks, 1):
-            context_text += (
-                f"\n[Source {i}: {chunk['disaster']} - {chunk['phase']}]\n"
-                f"CRITICAL WARNING: {chunk['critical_alert']}\n"
-                f"INSTRUCTIONS: {chunk['content']}\n"
-            )
-
-        prompt = (
-            f"{EMERGENCY_SYSTEM_PROMPT}\n\n"
-            f"--- VERIFIED DISASTER SURVIVAL KNOWLEDGE BASE ---\n"
-            f"{context_text}\n"
-            f"--- EMERGENCY QUERY ---\n"
-            f"User: {user_query}\n\n"
-            f"Emergency Response Specialist (Actionable, life-saving advice):"
-        )
-        return prompt
-
     def generate_response(self, user_query: str, n_context: int = 2) -> Dict[str, Any]:
-        """Runs RAG retrieval and produces the final response.
-        
-        Returns:
-            Dict containing:
-              - 'answer': Clean, actionable response text
-              - 'sources': List of matched vector DB items with alerts
-              - 'critical_alerts': High-priority warning strings
-        """
+        """Runs RAG retrieval and produces the final Groq response."""
         chunks = self.retrieve_context(user_query, n_results=n_context)
         critical_alerts = [c["critical_alert"] for c in chunks if c.get("critical_alert")]
 
@@ -109,13 +77,13 @@ class DisasterChatbot:
                 "critical_alerts": []
             }
 
-        # If lightweight SLM mode or if transformer model is not loaded,
-        # generate an instant high-reliability structured synthesis from the retrieved chunks.
-        if self.use_lightweight_slm or self._model is None:
+        # Try Groq API first if key configured, otherwise use high-reliability structured synthesis
+        answer = None
+        if self.groq_api_key:
+            answer = self._generate_with_groq(user_query, chunks)
+
+        if not answer:
             answer = self._synthesize_structured_answer(user_query, chunks)
-        else:
-            prompt = self.format_prompt(user_query, chunks)
-            answer = self._generate_with_local_slm(prompt)
 
         return {
             "query": user_query,
@@ -129,7 +97,8 @@ class DisasterChatbot:
                     "relevance": c.get("relevance_score", 0.0)
                 }
                 for c in chunks
-            ]
+            ],
+            "provider": "Groq" if self.groq_api_key else "Offline Vector DB"
         }
 
     def _synthesize_structured_answer(self, query: str, chunks: List[Dict[str, Any]]) -> str:
@@ -147,7 +116,6 @@ class DisasterChatbot:
             lines.append(f"\n⚠️ **CRITICAL WARNING**: {alert}\n")
 
         lines.append(f"**Immediate Actions**:")
-        # Format sentences as clear action steps
         sentences = [s.strip() for s in content.replace("1.", "\n• ").replace("2.", "\n• ").replace("3.", "\n• ").replace("4.", "\n• ").split(". ") if s.strip()]
         for s in sentences:
             if not s.endswith("."):
@@ -157,27 +125,35 @@ class DisasterChatbot:
         lines.append("\n📡 *Tip: Tap the red SOS button in Bitchat to broadcast your coordinates to nearby rescue nodes.*")
         return "\n".join(lines)
 
-    def _generate_with_local_slm(self, prompt: str) -> str:
-        """Runs generative inference through local HuggingFace SLM."""
+    def _generate_with_groq(self, query: str, chunks: List[Dict[str, Any]]) -> Optional[str]:
+        """Calls Groq API for rapid inference."""
         try:
-            import torch
-            inputs = self._tokenizer(prompt, return_tensors="pt")
-            if torch.cuda.is_available() and self.device != "cpu":
-                inputs = {k: v.to("cuda") for k, v in inputs.items()}
-
-            with torch.no_grad():
-                outputs = self._model.generate(
-                    **inputs,
-                    max_new_tokens=256,
-                    temperature=0.2,
-                    top_p=0.9,
-                    do_sample=True
-                )
-            decoded = self._tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-            return decoded.strip()
-        except Exception as e:
-            # Fallback to structured knowledge synthesis on error
-            return f"[SLM fallback] Error during inference: {e}"
+            import requests
+            context_text = "\n".join([f"[{c['disaster']} - {c['phase']}]: {c['critical_alert']} {c['content']}" for c in chunks])
+            system_prompt = (
+                f"{EMERGENCY_SYSTEM_PROMPT}\n\n"
+                f"STRICT SAFETY GUARDRAIL: Only answer disaster and emergency questions. Ground answers strictly on:\n{context_text}"
+            )
+            payload = {
+                "model": self.model_id,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
+                "temperature": 0.2,
+                "max_tokens": 300
+            }
+            headers = {
+                "Authorization": f"Bearer {self.groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                return data["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
+        return None
 
 
 # --- Lightweight HTTP API Server for App and Client Integration ---
