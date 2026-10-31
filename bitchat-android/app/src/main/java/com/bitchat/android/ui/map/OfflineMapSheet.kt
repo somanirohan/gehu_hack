@@ -556,3 +556,8 @@ fun parseGeoTag(content: String): Pair<Double, Double>? {
     val lon = m.groupValues[2].toDoubleOrNull() ?: return null
     return lat to lon
 }
+
+/** Strip `geo:lat,lon` tag so message text displays cleanly in chat while location is shown in metadata. */
+fun stripGeoTag(content: String): String {
+    return content.replace(Regex("\\s*geo:-?\\d+(?:\\.\\d+)?,(-?\\d+(?:\\.\\d+)?)\\s*"), " ").trim()
+}

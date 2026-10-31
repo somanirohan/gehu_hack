@@ -650,12 +650,13 @@ if (isMeshTimeline) {
         val incidents = publicMsgs.mapNotNull { msg ->
             if (msg.category == com.bitchat.android.model.Role.ADMIN) return@mapNotNull null
             val geo = com.bitchat.android.ui.map.parseGeoTag(msg.content) ?: return@mapNotNull null
+            val cleanContent = com.bitchat.android.ui.map.stripGeoTag(msg.content)
             com.bitchat.android.ui.map.IncidentMarker(
                 id = msg.id,
                 lat = geo.first,
                 lon = geo.second,
                 role = msg.category,
-                label = "${msg.sender}: ${msg.content.take(40)}"
+                label = "${msg.sender}: ${cleanContent.take(40)}"
             )
         }
         com.bitchat.android.ui.map.OfflineMapScreen(

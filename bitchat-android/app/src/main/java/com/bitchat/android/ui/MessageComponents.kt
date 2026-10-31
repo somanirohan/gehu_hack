@@ -696,8 +696,13 @@ internal fun TextMessageLayout(
     val palette = LocalBitchatPalette.current
     val myPeerId = meshService.myPeerID
     val isSelf = message.isFromSelf(currentUserNickname, myPeerId)
+    val geoCoords = remember(message.content) {
+        com.bitchat.android.ui.map.parseGeoTag(message.content)
+    }
     val displayMessage = remember(message, bodyContent) {
-        if (bodyContent == message.content) message else message.copy(content = bodyContent)
+        val raw = if (bodyContent == message.content) message else message.copy(content = bodyContent)
+        val cleaned = com.bitchat.android.ui.map.stripGeoTag(raw.content)
+        if (cleaned.isNotEmpty()) raw.copy(content = cleaned) else raw
     }
 
     val bodyText = remember(
@@ -819,6 +824,21 @@ internal fun TextMessageLayout(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (geoCoords != null) {
+                        Text(
+                            text = "📍",
+                            fontSize = 10.sp,
+                            modifier = Modifier
+                                .clickable {
+                                    val uri = Uri.parse("geo:${geoCoords.first},${geoCoords.second}?q=${geoCoords.first},${geoCoords.second}")
+                                    val mapIntent = Intent(Intent.ACTION_VIEW, uri)
+                                    try {
+                                        context.startActivity(mapIntent)
+                                    } catch (_: Exception) { }
+                                }
+                                .padding(end = 4.dp)
+                        )
+                    }
                     Text(
                         text = timeFormatter.format(message.timestamp),
                         fontSize = 10.sp,
