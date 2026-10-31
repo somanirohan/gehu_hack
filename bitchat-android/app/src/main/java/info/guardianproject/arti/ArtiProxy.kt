@@ -48,6 +48,10 @@ class ArtiProxy private constructor(
      * @throws ArtiException if initialization or startup fails
      */
     fun start() {
+        if (!ArtiNative.isSupported) {
+            Log.w(TAG, "Arti native library is not supported/loaded on this build; skipping start")
+            return
+        }
         if (isRunning) {
             Log.w(TAG, "Arti already running")
             return

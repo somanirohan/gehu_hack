@@ -390,13 +390,23 @@ class MeshForegroundService : Service() {
                 // Fallback for cases where "While In Use" permission exists but background start is restricted
                 if (type and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0) {
                      android.util.Log.w("MeshForegroundService", "Failed to start with LOCATION type, falling back to CONNECTED_DEVICE: ${e.message}")
-                     startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                     try {
+                         startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                     } catch (fallbackEx: Exception) {
+                         android.util.Log.e("MeshForegroundService", "Failed fallback startForeground: ${fallbackEx.message}")
+                     }
                 } else {
-                    throw e
+                    android.util.Log.e("MeshForegroundService", "SecurityException starting foreground service: ${e.message}")
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("MeshForegroundService", "Exception starting foreground service: ${e.message}")
             }
         } else {
-            startForeground(NOTIFICATION_ID, notification)
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                android.util.Log.e("MeshForegroundService", "Exception starting foreground service: ${e.message}")
+            }
         }
     }
 

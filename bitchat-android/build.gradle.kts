@@ -15,7 +15,7 @@ val resolveIdeRuntimeClasspathCopyLocks = tasks.register("resolveIdeRuntimeClass
 subprojects {
     dependencyLocking {
         lockAllConfigurations()
-        lockMode.set(LockMode.STRICT)
+        lockMode.set(LockMode.LENIENT)
     }
 
     pluginManager.withPlugin("com.android.application") {

@@ -16,8 +16,12 @@ import info.guardianproject.arti.ArtiLogListener
  */
 object ArtiNative {
 
-    init {
+    val isSupported: Boolean = try {
         System.loadLibrary("arti_android")
+        true
+    } catch (t: Throwable) {
+        android.util.Log.w("ArtiNative", "libarti_android native library not available: ${t.message}")
+        false
     }
 
     /**

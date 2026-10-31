@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.CoroutineScope
@@ -91,7 +92,11 @@ class VlmApiService(
         }
         
         try {
-            context.registerReceiver(connectivityReceiver, filter)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(connectivityReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                context.registerReceiver(connectivityReceiver, filter)
+            }
             Log.d(TAG, "Connectivity receiver registered")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register connectivity receiver: ${e.message}")
@@ -200,8 +205,8 @@ class VlmApiService(
 
         val destObj = json?.optJSONObject("default_destination")
         if (destObj != null) {
-            val type = destObj.optString("type", null)
-            val id = destObj.optString("id", null)
+            val type = if (destObj.has("type") && !destObj.isNull("type")) destObj.getString("type") else null
+            val id = if (destObj.has("id") && !destObj.isNull("id")) destObj.getString("id") else null
             if (type != null && id != null) {
                 VlmSettingsManager.setDefaultDestination(VlmDestination(type, id))
             }
@@ -228,7 +233,7 @@ class VlmApiService(
             ))
         }
 
-        val text = json.optString("text", null)
+        val text = if (json.has("text") && !json.isNull("text")) json.getString("text") else null
         if (text.isNullOrBlank()) {
             return jsonResponse(Response.Status.BAD_REQUEST, mapOf(
                 "status" to "error",
@@ -236,8 +241,8 @@ class VlmApiService(
             ))
         }
 
-        val peerId = if (json.has("peer_id") && !json.isNull("peer_id")) json.optString("peer_id", null) else null
-        val channel = if (json.has("channel") && !json.isNull("channel")) json.optString("channel", null) else null
+        val peerId = if (json.has("peer_id") && !json.isNull("peer_id")) json.getString("peer_id") else null
+        val channel = if (json.has("channel") && !json.isNull("channel")) json.getString("channel") else null
 
         val result = VlmMessageHandler.sendTextMessage(context, text, peerId, channel)
 

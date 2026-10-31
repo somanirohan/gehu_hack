@@ -145,7 +145,7 @@ class ArtiTorManager private constructor() {
                 .build()
 
             val savedMode = TorPreferenceManager.get(application)
-            if (savedMode == TorMode.ON) {
+            if (savedMode == TorMode.ON && org.torproject.arti.ArtiNative.isSupported) {
                 if (currentSocksPort < DEFAULT_SOCKS_PORT) {
                     currentSocksPort = DEFAULT_SOCKS_PORT
                 }
@@ -155,9 +155,12 @@ class ArtiTorManager private constructor() {
                     OkHttpProvider.reset()
                 } catch (_: Throwable) {
                 }  // Only reset OkHttp during init
+            } else {
+                desiredMode = TorMode.OFF
+                socksAddr = null
             }
             appScope.launch {
-                applyMode(application, savedMode)
+                applyMode(application, if (org.torproject.arti.ArtiNative.isSupported) savedMode else TorMode.OFF)
             }
 
             appScope.launch {
@@ -194,6 +197,20 @@ class ArtiTorManager private constructor() {
     suspend fun applyMode(application: Application, mode: TorMode) {
         applyMutex.withLock {
             try {
+                if (mode == TorMode.ON && !org.torproject.arti.ArtiNative.isSupported) {
+                    Log.w(TAG, "applyMode: Tor native library not supported on this device/build; forcing OFF")
+                    desiredMode = TorMode.OFF
+                    lastMode = TorMode.OFF
+                    socksAddr = null
+                    _statusFlow.value = _statusFlow.value.copy(
+                        mode = TorMode.OFF,
+                        running = false,
+                        bootstrapPercent = 0,
+                        state = TorState.OFF
+                    )
+                    resetNetworkConnections()
+                    return
+                }
                 desiredMode = mode
                 lastMode = mode
                 val s = _statusFlow.value
@@ -253,7 +270,7 @@ class ArtiTorManager private constructor() {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Failed to apply Arti mode: ${e.message}")
             }
         }
@@ -285,11 +302,11 @@ class ArtiTorManager private constructor() {
             lifecycleState = LifecycleState.RUNNING
             startInactivityMonitoring()
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error starting Arti on port $currentSocksPort: ${e.message}")
             _statusFlow.update { it.copy(state = TorState.ERROR) }
 
-            val isBindError = isBindError(e)
+            val isBindError = (e as? Exception)?.let { isBindError(it) } ?: false
             if (isBindError && bindRetryAttempts < MAX_RETRY_ATTEMPTS) {
                 bindRetryAttempts++
                 currentSocksPort++
