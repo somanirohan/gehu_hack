@@ -98,8 +98,45 @@ class DisasterAiClient(private val context: Context) {
             }
         }
 
-        // 3. Fallback to local on-device verified knowledge base
-        return@withContext localOfflineFallback(lastUserMessage, language)
+        // 3. AI is unavailable: Explicitly state so in chat instead of sending random fallback text
+        val cleanUrl = serverUrl.trim().ifEmpty { DEFAULT_SERVER_URL }
+        val unavailableMsg = when (language) {
+            "hi" -> "⚠️ एआई सहायक वर्तमान में उपलब्ध नहीं है। बैकएंड सर्वर ($cleanUrl) से कनेक्ट नहीं हो सका। कृपया जांचें कि आपका एआई बैकएंड सर्वर चल रहा है और सेटिंग्स में सही URL दर्ज है।"
+            "mr" -> "⚠️ एआय सहाय्यक सध्या उपलब्ध नाही. बॅकएंड सर्व्हरशी ($cleanUrl) संपर्क होऊ शकला नाही. कृपया बॅकएंड सर्व्हर सुरू असल्याचे आणि सेटिंग्जमध्ये योग्य URL असल्याचे तपासा."
+            "ta" -> "⚠️ AI உதவியாளர் தற்போது கிடைக்கவில்லை. பின்புல சேவையகத்துடன் ($cleanUrl) இணைக்க முடியவில்லை. சேவையகம் இயங்குவதையும் அமைப்புகளில் சரியான URL உள்ளதையும் உறுதிசெய்யவும்."
+            "te" -> "⚠️ AI సహాయకుడు ప్రస్తుతం అందుబాటులో లేదు. బ్యాకెండ్ సర్వర్‌తో ($cleanUrl) కనెక్ట్ కాలేకపోయింది. దయచేసి సర్వర్ నడుస్తున్నట్లు మరియు సెట్టింగ్‌లలో సరైన URL ఉన్నట్లు నిర్ధారించండి."
+            else -> "⚠️ AI assistant is currently unavailable. Could not connect to the backend server at $cleanUrl. Please verify your AI backend server is running and the URL is configured in Settings."
+        }
+
+        return@withContext DisasterAiResponse(
+            answer = unavailableMsg,
+            matchedProtocol = null,
+            category = "Connection Error",
+            criticalWarning = "AI Backend Server Unreachable",
+            isOfflineFallback = true,
+            isDisasterRelated = true,
+            guardrailTriggered = false,
+            provider = "Unavailable"
+        )
+    }
+
+    /**
+     * Checks if the configured backend server is reachable and healthy.
+     */
+    suspend fun checkHealth(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val baseUrl = serverUrl.trim().removeSuffix("/")
+            val healthUrl = "$baseUrl/health"
+            val request = Request.Builder()
+                .url(healthUrl)
+                .get()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "Health check failed for $serverUrl: ${e.message}")
+            false
+        }
     }
 
     /**

@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.net.CivilizationSyncClient
+import com.bitchat.android.net.DisasterAiClient
 import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.services.SyncBundleBuilder
 import com.bitchat.android.services.SyncPreferences
@@ -66,6 +67,11 @@ fun SyncSettingsSheet(
     var syncResultStatus by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var lastSyncedAtState by remember { mutableStateOf(prefs.lastSyncedAt) }
     var lastSyncErrorState by remember { mutableStateOf(prefs.lastSyncError) }
+
+    val aiClient = remember { DisasterAiClient(ctx) }
+    var aiServerUrl by remember { mutableStateOf(aiClient.serverUrl) }
+    var isTestingAiServer by remember { mutableStateOf(false) }
+    var aiTestResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -230,7 +236,85 @@ fun SyncSettingsSheet(
             if (!err.isNullOrBlank()) {
                 Text("Last error: $err", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            Spacer(Modifier.height(16.dp))
+
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
+
+            // AI Chatbot Server Section below Civilization Bridge
+            Text("AI Chatbot Server", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Configure the backend server URL for the Disaster AI Chatbot. The chatbot queries this endpoint to generate emergency and survival advice.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = aiServerUrl,
+                onValueChange = {
+                    aiServerUrl = it
+                    aiClient.serverUrl = it
+                    aiTestResult = null
+                },
+                label = { Text("AI Server URL (e.g. http://10.0.2.2:8800)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    val trimmed = aiServerUrl.trim()
+                    if (trimmed.isEmpty() || (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true))) {
+                        val errMsg = "Invalid URL: Must start with http:// or https://"
+                        aiTestResult = Pair(false, errMsg)
+                        Toast.makeText(ctx, errMsg, Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    aiClient.serverUrl = trimmed
+                    isTestingAiServer = true
+                    aiTestResult = null
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            aiClient.checkHealth()
+                        }
+                        isTestingAiServer = false
+                        aiTestResult = if (ok) {
+                            Pair(true, "AI backend server is online & reachable!")
+                        } else {
+                            Pair(false, "Cannot connect to AI backend at $trimmed")
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isTestingAiServer) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Testing AI Server...")
+                } else {
+                    Text("Test AI Server Connection")
+                }
+            }
+
+            aiTestResult?.let { (isSuccess, message) ->
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = if (isSuccess) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (isSuccess) "✓ $message" else "✕ $message",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isSuccess) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
         }
     }
 }

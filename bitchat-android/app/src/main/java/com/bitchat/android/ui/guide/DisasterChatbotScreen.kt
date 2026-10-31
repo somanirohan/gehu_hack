@@ -290,16 +290,25 @@ fun DisasterChatbotScreen(
                         }
                     } else {
                         // Assistant message
+                        val isUnavailable = msg.provider == "Unavailable"
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Start
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
-                                color = if (msg.isGuardrailNotice) colorScheme.errorContainer.copy(alpha = 0.8f) else colorScheme.surface,
+                                color = when {
+                                    msg.isGuardrailNotice -> colorScheme.errorContainer.copy(alpha = 0.8f)
+                                    isUnavailable -> colorScheme.errorContainer.copy(alpha = 0.45f)
+                                    else -> colorScheme.surface
+                                },
                                 border = BorderStroke(
                                     1.dp,
-                                    if (msg.isGuardrailNotice) colorScheme.error.copy(alpha = 0.5f) else colorScheme.outlineVariant
+                                    when {
+                                        msg.isGuardrailNotice -> colorScheme.error.copy(alpha = 0.5f)
+                                        isUnavailable -> colorScheme.error.copy(alpha = 0.35f)
+                                        else -> colorScheme.outlineVariant
+                                    }
                                 ),
                                 modifier = Modifier.fillMaxWidth(0.92f)
                             ) {
@@ -314,11 +323,15 @@ fun DisasterChatbotScreen(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
-                                                if (msg.isGuardrailNotice) "🛡️ Guardrail Filter" else "🤖 Disaster AI",
+                                                when {
+                                                    msg.isGuardrailNotice -> "🛡️ Guardrail Filter"
+                                                    isUnavailable -> "⚠️ AI Unavailable"
+                                                    else -> "🤖 Disaster AI"
+                                                },
                                                 fontFamily = BitchatFontFamily,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = if (msg.isGuardrailNotice) colorScheme.error else colorScheme.primary
+                                                color = if (msg.isGuardrailNotice || isUnavailable) colorScheme.error else colorScheme.primary
                                             )
                                             msg.provider?.let { prov ->
                                                 Text(

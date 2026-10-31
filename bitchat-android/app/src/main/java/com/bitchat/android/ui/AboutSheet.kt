@@ -1276,6 +1276,56 @@ fun AboutSheet(
                         }
                     }
 
+                    // AI Chatbot Backend Server
+                    item(key = "ai_chatbot_server_card") {
+                        val aiClient = remember { com.bitchat.android.net.DisasterAiClient(context) }
+                        var serverUrlText by remember { mutableStateOf(aiClient.serverUrl) }
+                        var isSaved by remember { mutableStateOf(false) }
+
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
+                            AboutSectionLabel(text = "AI Chatbot Backend Server")
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = AboutHorizontalPadding),
+                                color = colorScheme.surface,
+                                shape = AboutCardShape
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Backend server URL for Groq Disaster AI Chatbot. The chatbot queries this endpoint to generate emergency answers.",
+                                        fontSize = 12.sp,
+                                        fontFamily = BitchatFontFamily,
+                                        color = colorScheme.onSurfaceVariant
+                                    )
+                                    OutlinedTextField(
+                                        value = serverUrlText,
+                                        onValueChange = {
+                                            serverUrlText = it
+                                            aiClient.serverUrl = it
+                                            isSaved = true
+                                        },
+                                        label = { Text("AI Server URL (e.g. http://10.0.2.2:8800)") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    if (isSaved) {
+                                        Text(
+                                            text = "✓ Server URL updated",
+                                            fontSize = 11.sp,
+                                            fontFamily = BitchatFontFamily,
+                                            color = colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     } // end Settings tab
 
                     // Footer
