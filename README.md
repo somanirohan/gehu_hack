@@ -12,6 +12,9 @@ RESQ keeps the chain from *"someone needs help"* to *"a unit is on the way"* wor
 
 ---
 
+<img width="1341" height="785" alt="WhatsApp Image 2026-11-01 at 12 19 52 PM" src="https://github.com/user-attachments/assets/a69b96de-3790-4d52-8c85-91cef06a0ac3" />
+
+
 ## Contents
 
 - [The problem](#the-problem)
