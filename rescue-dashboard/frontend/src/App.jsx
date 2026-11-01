@@ -1310,6 +1310,7 @@ export default function App() {
             <span><i className="lg-ring blue" />flood-prone</span>
             <span><i className="lg-ring amber" />accident-prone</span>
             <span><i className="lg-block" />road blocked</span>
+            <span><i className="lg-beacon" />SOS beacon (👥 live capacity)</span>
 
             {simulation && (
               <span>

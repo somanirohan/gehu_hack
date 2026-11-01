@@ -1096,3 +1096,7 @@ path.route-line, path.route-rerouted, path.route-drone { stroke-width: 5px; }
   color: var(--text-2);
 }
 
+
+/* SOS beacons on the admin map */
+.legend i.lg-beacon { background: #EF4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25); }
+.beacon-note { margin: 6px 0; font-size: 12px; background: var(--sage); padding: 4px 8px; border-radius: 4px; }

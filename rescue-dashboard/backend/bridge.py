@@ -202,28 +202,9 @@ async def civ_sync(bundle: CivBundle, background: BackgroundTasks):
             accepted.append(inc.id)
             notes += n
 
-            # When an incoming incident is an SOS distress / beacon, ensure it appears as an active SOS Beacon with live capacity
-            content_str = (inc.content or "").strip()
-            cat_str = (inc.category or "").lower()
-            if ("🆘" in content_str or "beacon" in content_str.lower() or cat_str in ("sos", "beacon")) and inc.lat is not None and inc.lon is not None:
-                mesh_b_id = f"beacon-{inc.id}"
-                existing_b = con.execute("SELECT id, capacity, status FROM shelters WHERE id=?", (mesh_b_id,)).fetchone()
-                if not existing_b:
-                    clean_title = content_str.replace("🆘", "").split("geo:")[0].strip()
-                    if not clean_title or len(clean_title) < 3:
-                        clean_title = f"SOS Beacon ({inc.sender or 'Field Peer'})"
-                    initial_cap = inc.people if (inc.people and inc.people > 1) else 50
-                    now_ts = int(time.time() * 1000)
-                    con.execute(
-                        "INSERT OR IGNORE INTO shelters (id, name, lat, lon, capacity, status, role, version, origin, verified, source, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (mesh_b_id, clean_title[:80], inc.lat, inc.lon, initial_cap, "OPEN", "SOS", now_ts, inc.sender or "mesh-sync", 0, "mesh-sos", v1.now())
-                    )
-                    changed_shelters_flag = True
-                    notes.append(("beacon_updated", {
-                        "id": mesh_b_id, "name": clean_title[:80], "capacity": initial_cap, "status": "OPEN",
-                        "lat": inc.lat, "lon": inc.lon, "role": "SOS", "origin": inc.sender or "mesh-sync", "is_beacon": True
-                    }))
+            # No beacon is created here from the SOS text: the app publishes the SOS beacon itself (a mesh
+            # shelter with the sender as owner), so the owner can update its capacity. A second server-made
+            # copy (id "beacon-<message>") could never be updated by the phone and showed up twice on the map.
 
         changed_shelters = sum(_upsert_shelter(con, s) for s in bundle.shelters)
         new = sum(1 for r in results if not r.get("duplicate"))

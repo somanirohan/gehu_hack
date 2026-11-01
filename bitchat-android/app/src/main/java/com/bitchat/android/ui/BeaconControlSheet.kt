@@ -82,7 +82,8 @@ fun BeaconControlSheet(
     val myShelters = remember(shelters, myPeerID) {
         shelters.map { it.shelter }.filter { it.originPeerID == myPeerID }
     }
-    val activeBeacon = myShelters.firstOrNull { it.status != ShelterStatus.CLOSED } ?: myShelters.firstOrNull()
+    // a stood-down (CLOSED) beacon is finished: show the "start a new beacon" form instead
+    val activeBeacon = myShelters.firstOrNull { it.status != ShelterStatus.CLOSED }
 
     var liveCapacity by remember(activeBeacon?.id, activeBeacon?.capacity) {
         mutableIntStateOf(activeBeacon?.capacity ?: 50)
@@ -330,7 +331,7 @@ fun BeaconControlSheet(
                         OutlinedButton(
                             onClick = {
                                 onDeleteBeacon(activeBeacon)
-                                updateSuccessMessage = "Beacon deactivated."
+                                updateSuccessMessage = "Beacon stood down. The control room map will remove it on the next sync."
                             },
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error

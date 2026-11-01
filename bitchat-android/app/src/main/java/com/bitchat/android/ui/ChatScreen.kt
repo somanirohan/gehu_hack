@@ -624,9 +624,11 @@ if (isMeshTimeline) {
     )
 
 
+    // collected, so the control page shows the new capacity / status right after an update
+    val beaconShelters by viewModel.shelters.collectAsStateWithLifecycle()
     BeaconControlSheet(
         isPresented = showBeaconControlSheet,
-        shelters = viewModel.shelters.value,
+        shelters = beaconShelters,
         myPeerID = viewModel.myPeerID(),
         onUpdateCapacity = { id, cap, st ->
             viewModel.updateShelterCapacity(id, cap, st)
@@ -635,7 +637,8 @@ if (isMeshTimeline) {
             viewModel.publishShelter(name, lat, lon, cap, role, status)
         },
         onDeleteBeacon = { shelter ->
-            viewModel.deleteShelter(shelter)
+            // stand down = mark CLOSED and sync it (deleting locally meant the admin map never heard about it)
+            viewModel.standDownBeacon(shelter)
         },
         onDismiss = { showBeaconControlSheet = false }
     )

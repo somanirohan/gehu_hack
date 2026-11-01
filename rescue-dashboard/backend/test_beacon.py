@@ -131,3 +131,43 @@ def test_civ_sync_creates_beacon_and_allows_origin_update():
     assert patch_res["ok"] is True
     assert patch_res["beacon"]["capacity"] == 55
     assert patch_res["beacon"]["status"] == "FULL"
+
+
+def _app_bundle(incidents=(), shelters=()):
+    return {"bundle_schema": "bitchat.civ.sync/v1", "produced_at": 1793500000000,
+            "incidents": list(incidents), "shelters": list(shelters)}
+
+
+def _beacon(capacity, version, status="OPEN"):
+    # what the app sends: sendSOS() publishes this shelter, BeaconControlSheet updates it (version = time)
+    return {"id": "sh-owner-1", "name": "SOS: 4 log fase hain", "lat": DDN[0], "lon": DDN[1], "capacity": capacity,
+            "status": status, "role": "CIVILIAN", "version": version, "originPeerID": "peer-owner"}
+
+
+def test_sos_from_the_app_gives_exactly_one_beacon_whose_owner_controls_capacity(monkeypatch):
+    sent = []
+
+    async def capture(event, data):
+        sent.append((event, data))
+
+    monkeypatch.setattr(main.hub, "send", capture)
+    sos = {"id": "MSG-1", "timestamp": 1793500000000, "sender": "asha", "role": "CIVILIAN",
+           "lat": DDN[0], "lon": DDN[1], "content": "🆘 4 log fase hain"}
+    client.post("/api/v1/bitchat/civ-sync", json=_app_bundle([sos], [_beacon(50, 1)]))
+    beacons = client.get("/api/v1/beacons").json()
+    assert [b["id"] for b in beacons] == ["sh-owner-1"]  # no second, uncontrollable copy from the SOS text
+    assert client.get("/api/incidents").json()  # the SOS itself is still an incident
+
+    # owner lowers capacity on their phone -> next sync -> live on the admin map
+    client.post("/api/v1/bitchat/civ-sync", json=_app_bundle([], [_beacon(12, 2)]))
+    b = next(x for x in client.get("/api/v1/shelters").json() if x["id"] == "sh-owner-1")
+    assert b["capacity"] == 12 and b["is_beacon"] is True
+    assert any(e == "beacon_updated" and d.get("capacity") == 12 for e, d in sent)
+
+    # an older copy relayed late by another phone must not undo it
+    client.post("/api/v1/bitchat/civ-sync", json=_app_bundle([], [_beacon(50, 1)]))
+    assert next(x for x in client.get("/api/v1/shelters").json() if x["id"] == "sh-owner-1")["capacity"] == 12
+
+    # owner stands the beacon down -> CLOSED (the map hides closed beacons)
+    client.post("/api/v1/bitchat/civ-sync", json=_app_bundle([], [_beacon(12, 3, status="CLOSED")]))
+    assert next(x for x in client.get("/api/v1/shelters").json() if x["id"] == "sh-owner-1")["status"] == "CLOSED"

@@ -467,6 +467,16 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * The owner stands their beacon down: it becomes CLOSED (newer version) instead of being deleted,
+     * so the change reaches nearby phones and, through Sync, the control room map, which hides it.
+     * A beacon this phone did not start can only be removed from this phone's own list.
+     */
+    fun standDownBeacon(shelter: com.bitchat.android.model.Shelter) {
+        val closed = updateShelterCapacity(shelter.id, shelter.capacity, com.bitchat.android.model.ShelterStatus.CLOSED)
+        if (!closed) deleteShelter(shelter)
+    }
+
     fun myPeerID(): String = mesh.myPeerID
 
 
