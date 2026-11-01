@@ -259,11 +259,15 @@ def on_dispatch(con, incident_id: int, responder_id: int) -> list:
     return notes
 
 
-def on_status(con, incident_id: int, status: str) -> list:
+def on_status(con, incident_id: int, status: str, by: str | None = None) -> list:
     final = "completed" if status == "resolved" else status
+    a = con.execute("SELECT id, responder_id FROM assignments WHERE incident_id=? AND status IN ('dispatched','en_route','on_site') "
+                    "ORDER BY id DESC LIMIT 1", (incident_id,)).fetchone()
     con.execute("UPDATE assignments SET status=?, updated_at=? WHERE incident_id=? AND status IN ('dispatched','en_route','on_site')",
                 (final, now(), incident_id))
-    return [("assignment_status", {"incident_id": incident_id, "status": final})]
+    # unit_id + by let the responder phone say "Control room marked this task complete" when it wasn't them
+    return [("assignment_status", {"incident_id": incident_id, "status": final, "by": by,
+                                   "assignment_id": a["id"] if a else None, "unit_id": a["responder_id"] if a else None})]
 
 
 def reroute_affected(con, hazard: dict) -> list:
@@ -361,7 +365,9 @@ def _attach_target(con, ev: dict) -> int | None:
         return None
     t = logic.parse_time(ev.get("created_at"))
     best = None
-    for i in core.rows(con.execute("SELECT * FROM incidents WHERE status != 'resolved'")):
+    # Only incidents still WAITING for a unit: a photo/message folded into an incident a unit is
+    # already handling would vanish from the incident list and from the AI planner.
+    for i in core.rows(con.execute("SELECT * FROM incidents WHERE status IN ('new','suggested','held')")):
         d = routing.haversine_m(i["lat"], i["lon"], ev["lat"], ev["lon"])
         gap = abs((t - logic.parse_time(i["last_report_at"])).total_seconds()) / 60
         if d <= ATTACH_RADIUS_M and gap <= ATTACH_WINDOW_MIN and (best is None or d < best[0]):
@@ -447,18 +453,27 @@ def handle_event(con, e: EventIn) -> tuple[dict, list]:
         _outbox(con, "received", e.event_id, text="Control room got your road report")
     elif e.kind in ("message", "photo"):
         incident_id = _attach_target(con, ev)
-        text = str(p.get("text") or p.get("caption") or "")[:500]
+        text = str(p.get("text") or p.get("caption") or p.get("message") or "")[:500]
+        label = text or ("Photo from the field" if e.kind == "photo" else "Message from the field")
         if incident_id:
-            _attach_report(con, incident_id, ev, text or ("Photo" if e.kind == "photo" else ""), photo)
-            handled = f"attached to incident #{incident_id}"
-        elif e.kind == "photo" and p.get("type") and e.lat is not None:
-            res = core.ingest(con, core.ReportIn(external_id=e.event_id, source="mesh", type=p["type"] if p["type"] in logic.TYPE_WEIGHT else "other",
-                                                 lat=e.lat, lon=e.lon, message=text, reported_at=ev["created_at"], via=_via_text(ev)))
+            _attach_report(con, incident_id, ev, label, photo)
+            handled = f"attached to incident #{incident_id} (waiting for a unit)"
+        elif e.lat is not None and e.lon is not None:
+            # Every located photo / voice note / message is on the incident list, so the officer and
+            # the AI planner see it. Type comes from the AI reading when there is one, else "other".
+            itype = p.get("type") if p.get("type") in logic.TYPE_WEIGHT else "other"
+            res = core.ingest(con, core.ReportIn(external_id=e.event_id, source="mesh", type=itype, lat=e.lat, lon=e.lon,
+                                                 message=label, people=min(500, max(1, int(p.get("people") or 1))),
+                                                 reported_at=ev["created_at"], lang=p.get("lang"), via=_via_text(ev)),
+                              waiting_only=True)
             incident_id = res["incident_id"]
-            con.execute("UPDATE incidents SET photo=COALESCE(photo, ?) WHERE id=?", (photo, incident_id))
-            handled = "new incident from photo"
+            if photo:
+                con.execute("UPDATE incidents SET photo=COALESCE(photo, ?) WHERE id=?", (photo, incident_id))
+                con.execute("UPDATE reports SET photo=? WHERE external_id=?", (photo, e.event_id))
+            what = "photo" if e.kind == "photo" else ("voice note" if (e.via and e.via.path == "voice note") else "message")
+            handled = f"merged into incident #{incident_id}" if res["merged"] else f"new incident from {what}"
         else:
-            handled = "unlinked: officer can promote it"
+            handled = "unlinked: no location (officer can promote it)"
         _outbox(con, "received", e.event_id, text="Control room has your message")
 
     con.execute("INSERT INTO events (event_id,kind,v,created_at,received_at,device_id,lat,lon,acc,via,payload,media,incident_id,hazard_id,handled_as) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -614,7 +629,7 @@ def units():
     with core.db() as con:
         us = core.rows(con.execute("SELECT id,name,kind,lat,lon,status,code,last_seen FROM responders ORDER BY id"))
         for u in us:
-            a = con.execute("SELECT id, incident_id, status, route, eta_min, route_version, route_source, reroute_reason FROM assignments WHERE responder_id=? AND status IN ('dispatched','en_route','on_site') ORDER BY id DESC LIMIT 1", (u["id"],)).fetchone()
+            a = con.execute("SELECT id, incident_id, status, route, eta_min, distance_m, route_version, route_source, reroute_reason, created_at, updated_at FROM assignments WHERE responder_id=? AND status IN ('dispatched','en_route','on_site') ORDER BY id DESC LIMIT 1", (u["id"],)).fetchone()
             u["assignment"] = dict(a, route=json.loads(a["route"] or "[]")) if a else None
     return us
 
@@ -666,6 +681,50 @@ async def my_status(body: UnitStatusIn, authorization: Optional[str] = Header(No
             raise HTTPException(409, "No active task")
         incident_id = a["incident_id"]
     return await core.set_status(incident_id, core.StatusIn(status=body.status, actor=name))
+
+
+# ---------- officer actions on a route (click it on the map) ----------
+class AssignmentActIn(BaseModel):
+    officer: str = "Duty Officer"
+    reason: str = Field(default="", max_length=200)
+
+
+def _active_assignment(con, aid: int) -> dict:
+    a = con.execute("SELECT * FROM assignments WHERE id=?", (aid,)).fetchone()
+    if not a:
+        raise HTTPException(404, "Route not found")
+    if a["status"] not in ("dispatched", "en_route", "on_site"):
+        raise HTTPException(409, f"This route is already {a['status']}")
+    return dict(a)
+
+
+@router.post("/assignments/{aid}/cancel")
+async def cancel_assignment(aid: int, body: AssignmentActIn):
+    """Officer cancels a dispatch: the unit is free again, the incident goes back to waiting
+    (with a fresh unit suggestion) and the responder's phone is told."""
+    with core.db() as con:
+        a = _active_assignment(con, aid)
+        unit = con.execute("SELECT id, name FROM responders WHERE id=?", (a["responder_id"],)).fetchone()
+        con.execute("UPDATE assignments SET status='cancelled', updated_at=? WHERE id=?", (now(), aid))
+        con.execute("UPDATE responders SET status='available' WHERE id=?", (a["responder_id"],))
+        con.execute("UPDATE incidents SET status='suggested', responder_id=NULL WHERE id=? AND status IN ('dispatched','en_route','on_site')",
+                    (a["incident_id"],))
+        core.write_log(con, body.officer, "dispatch_cancelled", a["incident_id"], unit=unit["name"], assignment=aid,
+                       reason=body.reason or None)
+        core.suggest(con, dict(con.execute("SELECT * FROM incidents WHERE id=?", (a["incident_id"],)).fetchone()))
+        text = "Control room cancelled this task" + (f": {body.reason}" if body.reason else ".")
+    await _send([("assignment_status", {"assignment_id": aid, "incident_id": a["incident_id"], "unit_id": a["responder_id"],
+                                        "status": "cancelled", "text": text}), ("changed", {"incident_id": a["incident_id"]})])
+    return {"ok": True, "incident_id": a["incident_id"], "unit": unit["name"]}
+
+
+@router.post("/assignments/{aid}/complete")
+async def complete_assignment(aid: int, body: AssignmentActIn):
+    """Officer marks the task done (same as the ground team's 'Done'): incident resolved, unit free."""
+    with core.db() as con:
+        a = _active_assignment(con, aid)
+    inc = await core.set_status(a["incident_id"], core.StatusIn(status="resolved", actor=body.officer))
+    return {"ok": True, "incident_id": a["incident_id"], "status": inc["status"]}
 
 
 @router.post("/units/me/reroute")

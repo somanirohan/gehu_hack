@@ -51,10 +51,14 @@ def test_feed_shows_rule_label_and_offline_wait():
     assert e["via"]["path"] == "mesh-sync" and e["via"]["held_seconds"] >= 700
 
 
-def test_plain_message_is_kept_not_turned_into_incident():
+def test_plain_message_is_on_the_incident_list_at_lowest_priority():
+    """Every located report must be visible on the incident list (and to the AI planner).
+    A message that is not an emergency becomes a low-priority 'other' incident the officer can close."""
     client.post("/api/v1/bitchat/civ-sync", json=bundle([msg(3, "Reached the shelter, all safe")]))
-    assert client.get("/api/incidents").json() == []
-    assert client.get("/api/v1/feed").json()[0]["kind"] == "message"
+    inc = client.get("/api/incidents").json()
+    assert len(inc) == 1 and inc[0]["type"] == "other"
+    e = client.get("/api/v1/feed").json()[0]
+    assert e["kind"] == "message" and e["incident_id"] == inc[0]["id"]
 
 
 def test_official_road_block_activates_citizen_one_waits():

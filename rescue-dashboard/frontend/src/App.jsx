@@ -16,6 +16,7 @@ import CityLayers from './CityLayers'
 import PlannerPanel from './PlannerPanel'
 import CommanderPanel from './CommanderPanel'
 import RouteAlerts from './RouteAlerts'
+import RoutePanel from './RoutePanel'
 import PhotoHazards, { PhotoHazardMarkers, usePhotoHazards, photoApi } from './PhotoHazards'
 import { IncidentMarkers, UnitMarkers, SEV, TypeIcon } from './MapMarkers'
 import AgentFeed, { useAgentItems } from './AgentFeed'
@@ -665,6 +666,25 @@ function Detail({
               <div className="rmsg">{report.message}</div>
             )}
 
+            {report.transcript && (
+              <div className="rtranscript">
+                🎙️ {report.spoken_language ? `(${report.spoken_language}) ` : ''}{report.transcript}
+                {report.transcript_en && <div className="ren">English: {report.transcript_en}</div>}
+              </div>
+            )}
+
+            {report.ai_description && (
+              <div className="rphoto-ai">Photo check: {report.ai_description}</div>
+            )}
+
+            {report.media?.length > 0 && (
+              <div className="rmedia">
+                {report.media.map((m, k) => (m.mime || '').startsWith('audio/')
+                  ? <audio key={m.media_id || k} controls preload="none" src={m.url} aria-label="Voice note" />
+                  : <a key={m.media_id || k} href={m.url} target="_blank" rel="noreferrer"><img src={m.thumb || m.url} alt="Photo from the field" /></a>)}
+              </div>
+            )}
+
             {report.via && (
               <div className="rvia">{report.via}</div>
             )}
@@ -749,6 +769,8 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true, names: true, labels: true })
   const [pickMode, setPickMode] = useState(null)  // 'block' | 'photo:<id>'
+  const [selectedRoute, setSelectedRoute] = useState(null)  // assignment id of the route clicked on the map
+  const [liveUnits, setLiveUnits] = useState([])
   const [photoFocus, setPhotoFocus] = useState(null)
   const [sideTab, setSideTab] = useState('incident')
   const [agentSteps, setAgentSteps] = useState([])
@@ -931,7 +953,17 @@ export default function App() {
     }
   }
 
-  const openIncident = (id) => { setSelectedId(id); setSideTab('incident') }
+  const openIncident = (id) => { setSelectedId(id); setSideTab('incident'); setSelectedRoute(null) }
+
+  const selectRoute = (aid) => {
+    setSelectedRoute(aid)
+    if (aid != null) {
+      setSideTab('route')
+      if (!panels.right) togglePanel('right')
+    } else if (sideTab === 'route') {
+      setSideTab('incident')
+    }
+  }
 
   // Run a frontend-only visual simulation.
   // It does not change backend incident status or audit history.
@@ -1115,7 +1147,8 @@ export default function App() {
             <MapResizer dep={`${present}-${panels.left}-${panels.right}`} />
 
             <CityLayers places={places.places} shelters={shelters} showRisk={layers.risk} showShelters={layers.shelters} />
-            <LiveLayers tick={tick} officer={officer} pickMode={pickMode} onPick={onPick} showUnits={false} showRoutes={layers.routes} />
+            <LiveLayers tick={tick} officer={officer} pickMode={pickMode} onPick={onPick} showUnits={false} showRoutes={layers.routes}
+              selectedRoute={selectedRoute} onSelectRoute={selectRoute} onUnits={setLiveUnits} />
 
             <UnitMarkers responders={responders} showLabels={layers.labels} />
 
@@ -1277,7 +1310,7 @@ export default function App() {
 
           <div className="seg sidetabs" role="tablist">
             {[['incident', 'Incident'], ['planner', 'AI Planner'], ['ask', 'Ask AI'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
-              <button key={k} className={sideTab === k ? 'on' : ''} onClick={() => setSideTab(k)}>{label}</button>
+              <button key={k} className={sideTab === k ? 'on' : ''} onClick={() => { setSideTab(k); setSelectedRoute(null) }}>{label}</button>
             ))}
           </div>
 
@@ -1294,6 +1327,10 @@ export default function App() {
             onStartSimulation={startSimulation}
             simulation={simulation}
           />}
+
+          {sideTab === 'route' && selectedRoute != null && <RoutePanel assignmentId={selectedRoute} units={liveUnits}
+            incidents={incidents} officer={officer} onClose={() => selectRoute(null)} onOpenIncident={openIncident}
+            onDone={() => { refresh(); setTick((t) => t + 1) }} />}
 
           {sideTab === 'feed' && <FeedPanel tick={tick} officer={officer} onOpenIncident={openIncident} />}
 

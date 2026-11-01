@@ -18,7 +18,8 @@
 param(
     [int]$Port = 8001,
     [switch]$Tunnel,
-    [switch]$NoWatch
+    [switch]$NoWatch,
+    [switch]$NoChatbot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -113,6 +114,27 @@ try {
                 -WorkingDirectory (Join-Path $Root $site) -WindowStyle Minimized -PassThru
             $started += $w
             Say "Watching $site for changes (pid $($w.Id), minimised window)."
+        }
+    }
+
+    # AI chatbot server for the mesh app (ai-surveillance\disaster_api_server.py on port 8800).
+    # The app reaches it through this backend (/api/chat), over the same https tunnel as Sync.
+    if (-not $NoChatbot) {
+        $ai = Join-Path (Split-Path $Root -Parent) 'ai-surveillance'
+        $aiPy = Join-Path $ai '.venv\Scripts\python.exe'
+        if (-not (Test-Path $aiPy)) { $aiPy = 'python' }
+        if (Test-Path (Join-Path $ai 'disaster_api_server.py')) {
+            $old = Get-NetTCPConnection -LocalPort 8800 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($old) {
+                $op = Get-Process -Id $old.OwningProcess -ErrorAction SilentlyContinue
+                if ($op -and $op.ProcessName -match '^python') { & taskkill /PID $op.Id /T /F | Out-Null; Start-Sleep -Seconds 1 }
+            }
+            $cb = Start-Process -FilePath $aiPy -ArgumentList 'disaster_api_server.py', '--port', '8800' `
+                -WorkingDirectory $ai -WindowStyle Minimized -PassThru
+            $started += $cb
+            Say "AI chatbot server started on port 8800 (pid $($cb.Id), minimised window)."
+        } else {
+            Say 'ai-surveillance\disaster_api_server.py not found: the app chatbot will say it is unavailable.' 'Yellow'
         }
     }
 

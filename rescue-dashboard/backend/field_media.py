@@ -298,6 +298,18 @@ def check_photo(eid: str, raise_rate_limit: bool = True) -> dict:
         handled = ev["handled_as"]
         notes: list = [("feed", {"count": 0, "source": "photo-check"})]
 
+        # The photo already has its own incident (type "other" until now): give it the type the photo shows,
+        # so priority and the suggested unit match (e.g. collapse -> rescue team). Never downgrade a typed incident.
+        own = con.execute("SELECT * FROM incidents WHERE id=?", (ev["incident_id"],)).fetchone() if ev["incident_id"] else None
+        if own and own["type"] == "other" and own["status"] in ("new", "suggested", "held"):
+            better = PEOPLE_TYPE.get(ai["hazard"]) if ai["people_in_danger"] else None
+            if better or ai["description"]:
+                con.execute("UPDATE incidents SET type=COALESCE(?, type), summary=? WHERE id=?",
+                            (better, (ai["description"] or own["summary"] or "")[:300], own["id"]))
+                core.write_log(con, "photo-check", "incident_type_from_photo", own["id"], type=better or "other",
+                               people_in_danger=ai["people_in_danger"])
+                core.suggest(con, dict(con.execute("SELECT * FROM incidents WHERE id=?", (own["id"],)).fetchone()))
+                res["incident_id"] = own["id"] if better else None
         # people visibly in danger and the photo has a place: make it an incident (unless already in one)
         if ai["people_in_danger"] and lat is not None and not ev["incident_id"]:
             itype = PEOPLE_TYPE.get(ai["hazard"], "other")

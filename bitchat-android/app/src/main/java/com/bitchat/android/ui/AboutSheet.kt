@@ -1308,7 +1308,7 @@ fun AboutSheet(
                                             aiClient.serverUrl = it
                                             isSaved = true
                                         },
-                                        label = { Text("AI Server URL (e.g. http://10.0.2.2:8800)") },
+                                        label = { Text("AI Server URL (empty = use your Sync address)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(10.dp)

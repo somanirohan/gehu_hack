@@ -219,13 +219,20 @@ def suggest(con, inc: dict) -> dict:
     return dict(con.execute("SELECT * FROM incidents WHERE id=?", (inc["id"],)).fetchone())
 
 
-def ingest(con, r: ReportIn) -> dict:
+WAITING_STATUSES = ("new", "suggested", "held")
+
+
+def ingest(con, r: ReportIn, waiting_only: bool = False) -> dict:
+    """waiting_only: merge only into incidents that still wait for a unit (used for photos, voice
+    notes and messages, so they never disappear into an incident a unit is already handling)."""
     if con.execute("SELECT 1 FROM reports WHERE external_id=?", (r.external_id,)).fetchone():
         return {"duplicate": True, "merged": False, "incident_id": None}
     rep = r.model_dump()
     rep["reported_at"] = logic.parse_time(r.reported_at).isoformat(timespec="seconds")
     photo = save_photo(r.photo_b64)
     open_incidents = rows(con.execute("SELECT * FROM incidents WHERE status != 'resolved'"))
+    if waiting_only:
+        open_incidents = [i for i in open_incidents if i["status"] in WAITING_STATUSES]
     target = next((i for i in open_incidents if logic.should_merge(rep, i)), None)
     if target:
         inc_id = target["id"]
@@ -332,6 +339,22 @@ def get_incident(incident_id: int):
         inc["ai_urgency"] = _ai_urgency_map(con, incident_id).get(incident_id)
         inc = enrich(inc)
         inc["reports"] = rows(con.execute("SELECT * FROM reports WHERE incident_id=? ORDER BY reported_at", (incident_id,)))
+        # Each report's own photo / voice note and transcript (from the event it came from), so the
+        # incident panel shows everything the field sent, not only the incident's first photo.
+        import v1  # noqa: PLC0415
+        for rep in inc["reports"]:
+            ev = con.execute("SELECT kind, media, payload FROM events WHERE event_id=?",
+                             ((rep["external_id"] or "").removeprefix("promoted-"),)).fetchone()
+            rep["media"], rep["kind"] = [], None
+            if ev:
+                rep["kind"] = ev["kind"]
+                rep["media"] = [m for m in v1.media_urls(con, json.loads(ev["media"] or "[]")) if m["url"]]
+                p = json.loads(ev["payload"] or "{}")
+                for k in ("transcript", "transcript_en", "spoken_language", "ai_description", "ai_hazard"):
+                    if p.get(k) not in (None, ""):
+                        rep[k] = p[k]
+            if rep.get("photo") and not any(m["url"] == rep["photo"] for m in rep["media"]):
+                rep["media"].insert(0, {"media_id": None, "url": rep["photo"], "thumb": rep["photo"], "mime": "image/jpeg"})
         inc["ai_triage"] = _ai_triage(con, incident_id)
         from agents import verifier
         inc["verification"] = verifier.latest(con, incident_id)
@@ -398,7 +421,7 @@ async def set_status(incident_id: int, body: StatusIn):
             con.execute("UPDATE responders SET status='available' WHERE id=?", (inc["responder_id"],))
         write_log(con, body.actor, f"status_{body.status}", incident_id)
         import v1  # noqa: PLC0415
-        notes = v1.on_status(con, incident_id, body.status)
+        notes = v1.on_status(con, incident_id, body.status, body.actor)
     for event, data in notes:
         await hub.send(event, data)
     await hub.send("changed", {"incident_id": incident_id})
@@ -485,6 +508,8 @@ app.include_router(v1.router)
 app.include_router(bridge.router)
 app.include_router(bridge.shelter_router)
 app.include_router(field_media.router)
+import chat_proxy  # noqa: E402
+app.include_router(chat_proxy.router)  # mesh app chatbot -> ai-surveillance chatbot server
 app.include_router(_places.router)
 from agents import api as _agents_api  # noqa: E402
 app.include_router(_agents_api.router)

@@ -309,3 +309,64 @@ def test_rate_limit_wait_is_read_from_groq_message():
         headers: dict = {}
         text = '{"error":{"message":"Rate limit reached ... Please try again in 1m2.5s. Need more tokens?"}}'
     assert media_ai._wait_hint(R()) == 62.5
+
+
+# ---------- every photo / voice / message must reach the incident list (and the planner) ----------
+def _dispatched_incident():
+    r = client.post("/api/v1/events", json={"event_id": uuid.uuid4().hex, "kind": "sos", "lat": LAT, "lon": LON,
+                                            "payload": {"type": "injured", "people": 1, "message": "accident"}}).json()
+    amb = next(u for u in client.get("/api/responders").json() if u["kind"] == "ambulance" and u["status"] == "available")
+    client.post(f"/api/incidents/{r['incident_id']}/approve", json={"officer": "T", "responder_id": amb["id"]})
+    return r["incident_id"]
+
+
+def test_photo_next_to_an_incident_already_handled_gets_its_own_incident(monkeypatch):
+    monkeypatch.setattr(media_ai, "analyze_photo", tree(hazard="none", blocks=False))
+    busy = _dispatched_incident()
+    r = client.post("/api/v1/field/photo", files={"file": ("p.jpg", jpeg(), "image/jpeg")}, data={"lat": LAT, "lon": LON}).json()
+    assert r["incident_id"] and r["incident_id"] != busy
+    inc = client.get(f"/api/incidents/{r['incident_id']}").json()
+    assert inc["status"] in ("new", "suggested")  # waiting: on the list and for the AI planner
+    assert inc["reports"][0]["media"][0]["mime"].startswith("image/")  # the photo shows in the incident panel
+
+
+def test_photo_next_to_a_waiting_incident_joins_it_and_shows_there(monkeypatch):
+    monkeypatch.setattr(media_ai, "analyze_photo", tree(hazard="none", blocks=False))
+    r0 = client.post("/api/v1/events", json={"event_id": uuid.uuid4().hex, "kind": "sos", "lat": LAT, "lon": LON,
+                                             "payload": {"type": "trapped", "people": 3, "message": "fase hain"}}).json()
+    r = client.post("/api/v1/field/photo", files={"file": ("p.jpg", jpeg(), "image/jpeg")},
+                    data={"lat": LAT, "lon": LON + 0.0005}).json()
+    assert r["incident_id"] == r0["incident_id"]
+    reps = client.get(f"/api/incidents/{r0['incident_id']}").json()["reports"]
+    assert any(m["mime"].startswith("image/") for rep in reps for m in rep["media"])
+
+
+def test_voice_message_that_is_not_an_sos_still_becomes_an_incident_with_its_recording(monkeypatch):
+    monkeypatch.setattr(media_ai, "transcribe", fake_stt("we have reached the school building", "english"))
+    r = client.post("/api/v1/field/voice", files={"file": ("v.m4a", b"audio-bytes", "audio/mp4")},
+                    data={"lat": LAT, "lon": LON}).json()
+    assert r["incident_id"], r
+    rep = client.get(f"/api/incidents/{r['incident_id']}").json()["reports"][0]
+    assert rep["media"][0]["mime"].startswith("audio/") and rep["transcript"] == "we have reached the school building"
+
+
+def test_photo_showing_people_in_danger_upgrades_its_own_incident(monkeypatch):
+    monkeypatch.setattr(media_ai, "analyze_photo", tree(hazard="collapsed_structure", people=True, blocks=False))
+    r = client.post("/api/v1/field/photo", files={"file": ("c.jpg", jpeg(), "image/jpeg")}, data={"lat": LAT, "lon": LON}).json()
+    inc = client.get(f"/api/incidents/{r['incident_id']}").json()
+    assert inc["type"] == "collapse" and inc["report_count"] == 1  # same incident, now typed (not a duplicate)
+
+
+def test_photo_incidents_reach_the_ai_planner(monkeypatch):
+    monkeypatch.setattr(media_ai, "analyze_photo", tree(hazard="none", blocks=False))
+    _dispatched_incident()
+    r = client.post("/api/v1/field/photo", files={"file": ("p.jpg", jpeg(), "image/jpeg")}, data={"lat": LAT, "lon": LON}).json()
+    plan = client.post("/api/v1/agents/plan", json={"officer": "T"}).json()  # AI off here: rule planner, same inputs
+    planned = {c["incident_id"] for c in plan.get("checked") or []} | {w["incident_id"] for w in plan["proposal"].get("waiting") or []}
+    assert r["incident_id"] in planned
+
+
+def test_message_without_location_stays_in_the_feed_only():
+    client.post("/api/v1/events", json={"event_id": "noloc-1", "kind": "message", "payload": {"text": "hello"}})
+    e = feed_item("noloc-1")
+    assert e["incident_id"] is None and "no location" in e["handled_as"]

@@ -158,6 +158,14 @@ function Duty({ onLogout }) {
         if (near) { notify('Control room alert', d.text); setBanner({ kind: 'info', text: `Alert: ${d.text}` }) }
       } else if (msg.event === 'unit_moved' && d.unit_id === unit.id && !posRef.current) {
         setServerPos([d.lat, d.lon])
+      } else if (msg.event === 'assignment_status' && d.unit_id === unit.id && d.status === 'cancelled') {
+        notify('Task cancelled', d.text || 'Control room cancelled this task')
+        setBanner({ kind: 'warn', text: d.text || 'Control room cancelled this task.' })
+        load()
+      } else if (msg.event === 'assignment_status' && d.unit_id === unit.id && d.status === 'completed' && d.by !== unit.name) {
+        notify('Task closed', `Control room marked it complete${d.by ? ` (${d.by})` : ''}`)
+        setBanner({ kind: 'info', text: `Control room marked this task complete${d.by ? ` (${d.by})` : ''}. You are free for new tasks.` })
+        load()
       } else if (['hazard', 'changed', 'assignment_status'].includes(msg.event)) {
         load()
       }

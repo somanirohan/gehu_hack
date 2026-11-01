@@ -362,7 +362,7 @@ fun DisasterChatbotScreen(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text(
-                                                text = "⚠️ $warn",
+                                                text = remember(warn) { ChatMarkdown.render("⚠️ $warn") },
                                                 fontFamily = BitchatFontFamily,
                                                 fontSize = 12.sp,
                                                 lineHeight = 16.sp,
@@ -374,8 +374,10 @@ fun DisasterChatbotScreen(
                                     }
 
                                     Spacer(Modifier.height(8.dp))
+                                    val codeBg = colorScheme.onSurface.copy(alpha = 0.08f)
+                                    val rendered = remember(msg.content, codeBg) { ChatMarkdown.render(msg.content, codeBg) }
                                     Text(
-                                        text = msg.content,
+                                        text = rendered,
                                         fontFamily = BitchatFontFamily,
                                         fontSize = 13.sp,
                                         lineHeight = 19.sp,
@@ -538,7 +540,7 @@ fun DisasterChatbotScreen(
                                     fontSize = 12.sp
                                 )
                             },
-                            placeholder = { Text("http://10.0.2.2:8800", fontFamily = BitchatFontFamily) },
+                            placeholder = { Text("Empty = use Sync address (https://…)", fontFamily = BitchatFontFamily) },
                             singleLine = true,
                             textStyle = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = BitchatFontFamily,

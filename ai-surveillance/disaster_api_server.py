@@ -114,7 +114,21 @@ DISASTER_ALLOWLIST_KEYWORDS = [
     "घाव", "जखम", "காயம்", "గాయం",
     "पानी", "पाणी", "தண்ணீர்", "నీరు",
     "प्राथमिक उपचार", "प्रथमोपचार", "முதலுதவி", "ప్రథమ చికిత్స",
-    "बचाव", "सुरक्षा", "ఆశ్రయం", "புகலிடம்", "निवारा", "आश्रय"
+    "बचाव", "सुरक्षा", "ఆశ్రయం", "புகலிடம்", "निवारा", "आश्रय",
+    "बचाओ", "मदद", "फंसे", "फंस", "घायल", "बेहोश", "चोट", "एम्बुलेंस", "अस्पताल", "डूब", "गिर", "भूस्खलन",
+
+    # Hinglish: Hindi typed in English letters (how most people text)
+    "bachao", "bachaao", "madad", "help karo", "aag", "baadh", "badh", "paani", "pani bhar", "fase", "phase hain",
+    "phas", "fas gaye", "fans", "ghayal", "zakhmi", "chot", "khoon", "behosh", "saans", "bhukamp", "bhookamp",
+    "toofan", "tufan", "malba", "pahad", "girna", "gir gaya", "gir gayi", "dab gaye", "dabe", "doob", "dub",
+    "jal gaya", "jal raha", "dhuan", "bijli", "karant", "sadak band", "rasta band", "road band", "lapata",
+    "kho gaya", "ambulance", "hospital", "aspatal", "rahat", "khatra", "sanp", "saanp",
+
+    # More English emergency words
+    "injured", "injury", "hurt", "accident", "crash", "ambulance", "hospital", "paramedic", "stuck", "lost",
+    "missing", "faint", "fainted", "breathing", "not breathing", "heart attack", "stroke", "seizure", "poison",
+    "snake", "bite", "electrocut", "power line", "explosion", "gas", "cloudburst", "heavy rain", "river",
+    "bridge", "road blocked", "stranded", "evacuat", "aftershock", "medicine", "insulin", "pregnant", "labour",
 ]
 
 DISASTER_BLOCKLIST_PATTERNS = [
@@ -153,23 +167,70 @@ GUARDRAIL_REJECTIONS = {
 }
 
 
+def _blocked(q: str) -> bool:
+    return any(re.search(p, q, re.IGNORECASE) for p in DISASTER_BLOCKLIST_PATTERNS)
+
+
+def _has_keyword(q: str) -> bool:
+    return any(kw in q for kw in DISASTER_ALLOWLIST_KEYWORDS)
+
+
 def is_disaster_query(query: str) -> bool:
-    """Pre-flight check verifying query is disaster or emergency related."""
+    """Fast word check only (no AI). Kept for /api/guardrail/check and as the first step."""
     q = query.lower().strip()
-    if len(q) < 3:
+    if len(q) < 3 or _blocked(q):
         return False
+    return _has_keyword(q)
 
-    # Check explicit blocklist patterns first
-    for pattern in DISASTER_BLOCKLIST_PATTERNS:
-        if re.search(pattern, q, re.IGNORECASE):
-            return False
 
-    # Check disaster keywords allowlist
-    for kw in DISASTER_ALLOWLIST_KEYWORDS:
-        if kw in q:
-            return True
+_TOPIC_CACHE: Dict[str, bool] = {}
 
-    return False
+
+def _ai_says_disaster(query: str, groq_key: Optional[str]) -> Optional[bool]:
+    """Quick yes/no from the AI for questions the word list does not cover (any language,
+    typos, Hinglish). None if the AI is unavailable."""
+    if not groq_key:
+        return None
+    key = query.strip().lower()[:300]
+    if key in _TOPIC_CACHE:
+        return _TOPIC_CACHE[key]
+    try:
+        resp = requests.post(GROQ_API_URL, timeout=8, headers={"Authorization": f"Bearer {groq_key}"}, json={
+            "model": DEFAULT_GROQ_MODEL, "temperature": 0, "max_tokens": 200, "reasoning_effort": "low",
+            "messages": [
+                {"role": "system", "content": "Decide if a message to a disaster-help chatbot is about an emergency, disaster, "
+                 "safety, first aid, rescue, evacuation, shelter, or surviving a crisis (in any language, including "
+                 "Hindi written in English letters). Answer with exactly one word: YES or NO."},
+                {"role": "user", "content": query[:500]},
+            ]})
+        if resp.status_code != 200:
+            return None
+        text = (resp.json()["choices"][0]["message"].get("content") or "").strip().upper()
+        if not text:
+            return None
+        verdict = text.startswith("YES") or " YES" in text
+        _TOPIC_CACHE[key] = verdict
+        return verdict
+    except Exception:
+        return None
+
+
+def guardrail_allows(query: str, history: Optional[List[Dict[str, str]]] = None,
+                     groq_key: Optional[str] = None) -> bool:
+    """Refuse only what is clearly off-topic. A person in danger must never be turned away
+    because they typed in Hinglish or used a word the list does not have."""
+    q = query.lower().strip()
+    if len(q) < 2 or _blocked(q):
+        return False
+    if _has_keyword(q):
+        return True
+    # a follow-up in an emergency conversation ("aur kya karu?", "what next?")
+    if history and any(_has_keyword((m.get("content") or "").lower()) for m in history if m.get("role") == "user"):
+        return True
+    ai = _ai_says_disaster(query, groq_key)
+    # AI unavailable: answer anyway. The answer itself is still limited to disaster topics by the
+    # system prompt, and refusing a real emergency is worse than answering an off-topic question.
+    return True if ai is None else ai
 
 
 class GroqDisasterEngine:
@@ -207,7 +268,7 @@ class GroqDisasterEngine:
         active_groq_key = self.resolve_groq_key(groq_key)
 
         # 1. Safety Guardrail Verification
-        if not is_disaster_query(query):
+        if not guardrail_allows(query, messages_history, active_groq_key):
             rejection_text = GUARDRAIL_REJECTIONS.get(lang_code, GUARDRAIL_REJECTIONS["en"])
             return {
                 "answer": rejection_text,
@@ -221,7 +282,13 @@ class GroqDisasterEngine:
             }
 
         # 2. SQLite RAG Protocol Retrieval
-        matched = self.sqlite_store.search(query, limit=2)
+        # A follow-up like "aur kya karu?" names no disaster: search the guide with the earlier
+        # user messages too, or it matches a random protocol (seen: flood chat got earthquake advice).
+        search_text = query
+        if not _has_keyword(query.lower()) and messages_history:
+            earlier = [m.get("content", "") for m in messages_history if m.get("role") == "user"]
+            search_text = " ".join(earlier[-2:] + [query])
+        matched = self.sqlite_store.search(search_text, limit=2)
         top_protocol = matched[0] if matched else None
 
         title = top_protocol.get("title", "Disaster Emergency") if top_protocol else "Emergency Protocol"
@@ -243,7 +310,8 @@ class GroqDisasterEngine:
             "mr": "Respond entirely and fluently in pure Marathi (मराठी). Use clear Devanagari script.",
             "ta": "Respond entirely and fluently in pure Tamil (தமிழ்). Use clear Tamil script.",
             "te": "Respond entirely and fluently in pure Telugu (తెలుగు). Use clear Telugu script.",
-            "en": "Respond directly and clearly in English."
+            "en": "Respond directly and clearly in English. If the user writes in Hindi or Hinglish (Hindi in English "
+                  "letters), reply in the same style they used."
         }
         lang_directive = lang_directives.get(lang_code, "Respond directly and clearly in English.")
 
@@ -264,7 +332,9 @@ class GroqDisasterEngine:
             "2. Highlight any lethal danger clearly with '⚠️ DANGER / WARNING'.\n"
             "3. Keep instructions concise, direct, and numbered or bulleted.\n"
             "4. Ground your guidance in verified emergency protocols.\n"
-            "5. Remind the user to activate their offline mesh SOS beacon if trapped or in peril."
+            "5. Remind the user to activate their offline mesh SOS beacon if trapped or in peril.\n"
+            "6. The user is in India (Uttarakhand). Use Indian emergency numbers only: 112 (all emergencies), "
+            "108 (ambulance), 101 (fire), 100 (police), 1070 (state disaster helpline). Never mention 911."
         )
 
         groq_messages = [{"role": "system", "content": system_prompt}]
@@ -284,6 +354,11 @@ class GroqDisasterEngine:
                 "temperature": temperature,
                 "max_tokens": max_tokens
             }
+            if "gpt-oss" in DEFAULT_GROQ_MODEL or "qwen" in DEFAULT_GROQ_MODEL:
+                # Thinking models spend tokens on hidden reasoning first; with the app's 350-token limit the
+                # visible answer came back EMPTY (348 of 350 tokens were reasoning). Low reasoning + room to answer.
+                payload["reasoning_effort"] = "low"
+                payload["max_tokens"] = max(max_tokens, 1000)
             headers = {
                 "Authorization": f"Bearer {active_groq_key}",
                 "Content-Type": "application/json"
@@ -378,7 +453,7 @@ def health_check() -> Dict[str, Any]:
 @app.post("/api/guardrail/check")
 def check_guardrail(req: Dict[str, str]) -> Dict[str, Any]:
     query = req.get("query") or req.get("message") or ""
-    allowed = is_disaster_query(query)
+    allowed = guardrail_allows(query, None, engine.resolve_groq_key())
     return {
         "query": query,
         "allowed": allowed,

@@ -2,6 +2,7 @@ package com.bitchat.android.net
 
 import android.content.Context
 import android.util.Log
+import com.bitchat.android.services.SyncPreferences
 import com.bitchat.android.ui.guide.SURVIVAL_SECTIONS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,25 +50,44 @@ class DisasterAiClient(private val context: Context) {
         private const val PREFS_NAME = "disaster_ai_prefs"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_GROQ_API_KEY = "groq_api_key"
-        const val DEFAULT_SERVER_URL = "http://10.0.2.2:8800" // Works in Android Emulator
+        const val DEFAULT_SERVER_URL = "http://10.0.2.2:8800" // only reachable from the Android emulator
         private const val GROQ_DIRECT_URL = "https://api.groq.com/openai/v1/chat/completions"
-        private const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+        // llama-3.3-70b-versatile is no longer offered on the project's Groq account
+        private const val DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /**
+     * Where the chatbot lives. If the user never set one (or left the emulator-only default),
+     * use the control-room address from Sync settings: the rescue backend forwards /api/chat to
+     * the chatbot server, over the same https tunnel the phone already uses for Sync.
+     */
     var serverUrl: String
-        get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+        get() {
+            val saved = prefs.getString(KEY_SERVER_URL, null)?.trim().orEmpty()
+            if (saved.isNotEmpty() && saved != DEFAULT_SERVER_URL) return saved
+            return syncBaseUrl() ?: DEFAULT_SERVER_URL
+        }
         set(value) = prefs.edit().putString(KEY_SERVER_URL, value.trim()).apply()
+
+    /** "https://x.trycloudflare.com/api/v1/bitchat/civ-sync" -> "https://x.trycloudflare.com" */
+    private fun syncBaseUrl(): String? {
+        val url = try { SyncPreferences.getInstance(context).endpointUrl.trim() } catch (_: Exception) { "" }
+        if (!url.startsWith("http")) return null
+        val idx = url.indexOf("/api/")
+        return (if (idx > 0) url.substring(0, idx) else url).trimEnd('/')
+    }
 
     var groqApiKey: String
         get() = prefs.getString(KEY_GROQ_API_KEY, "") ?: ""
         set(value) = prefs.edit().putString(KEY_GROQ_API_KEY, value.trim()).apply()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        // through the tunnel the server may check the topic and then answer: give it time
+        .readTimeout(45, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
@@ -106,7 +126,7 @@ class DisasterAiClient(private val context: Context) {
             "ta" -> "⚠️ AI உதவியாளர் தற்போது கிடைக்கவில்லை. பின்புல சேவையகத்துடன் ($cleanUrl) இணைக்க முடியவில்லை. சேவையகம் இயங்குவதையும் அமைப்புகளில் சரியான URL உள்ளதையும் உறுதிசெய்யவும்."
             "te" -> "⚠️ AI సహాయకుడు ప్రస్తుతం అందుబాటులో లేదు. బ్యాకెండ్ సర్వర్‌తో ($cleanUrl) కనెక్ట్ కాలేకపోయింది. దయచేసి సర్వర్ నడుస్తున్నట్లు మరియు సెట్టింగ్‌లలో సరైన URL ఉన్నట్లు నిర్ధారించండి."
             else -> "⚠️ AI assistant is currently unavailable. Could not connect to the backend server at $cleanUrl. Please verify your AI backend server is running and the URL is configured in Settings."
-        }
+        } + connectionHint(cleanUrl)
 
         return@withContext DisasterAiResponse(
             answer = unavailableMsg,
@@ -118,6 +138,15 @@ class DisasterAiClient(private val context: Context) {
             guardrailTriggered = false,
             provider = "Unavailable"
         )
+    }
+
+    /** Why a common setup fails, in one line (shown under the "unavailable" message). */
+    private fun connectionHint(url: String): String = when {
+        url.contains("10.0.2.2") ->
+            "\n\nTip: 10.0.2.2 only works in the emulator. On a phone, leave the AI Server URL empty to use your Sync address, or enter the https tunnel address."
+        url.startsWith("http://") && !url.contains("localhost") && !url.contains("127.0.0.1") ->
+            "\n\nTip: Android blocks plain http:// addresses. Use the https://….trycloudflare.com address instead."
+        else -> ""
     }
 
     /**
@@ -236,7 +265,9 @@ class DisasterAiClient(private val context: Context) {
                 put("model", DEFAULT_GROQ_MODEL)
                 put("messages", groqMessagesArray)
                 put("temperature", 0.2)
-                put("max_tokens", 350)
+                // thinking model: keep reasoning short and leave room for the answer (350 came back empty)
+                put("reasoning_effort", "low")
+                put("max_tokens", 1000)
             }
 
             val request = Request.Builder()
