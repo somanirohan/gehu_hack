@@ -108,15 +108,18 @@ def init_db(reset: bool = False) -> None:
                 "DROP TABLE IF EXISTS log; "
                 "DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS media; DROP TABLE IF EXISTS hazards; "
                 "DROP TABLE IF EXISTS assignments; DROP TABLE IF EXISTS outbox; DROP TABLE IF EXISTS unit_tokens; "
-                "DROP TABLE IF EXISTS shelters; DROP TABLE IF EXISTS verifications; DROP TABLE IF EXISTS route_alerts;")
+                "DROP TABLE IF EXISTS shelters; DROP TABLE IF EXISTS verifications; DROP TABLE IF EXISTS route_alerts; "
+                "DROP TABLE IF EXISTS hazard_suggestions;")
         con.executescript(SCHEMA)
         if con.execute("SELECT COUNT(*) FROM responders").fetchone()[0] == 0:
             con.executemany("INSERT INTO responders (name, kind, lat, lon, status) VALUES (?,?,?,?, 'available')", DEMO_RESPONDERS)
         # Upgrade older databases in place (adds v1 tables and unit login codes)
         import v1  # noqa: PLC0415  (v1 imports this module, so import it late)
         import bridge  # noqa: PLC0415
+        import field_media  # noqa: PLC0415
         v1.init_v1(con)
         bridge.init_bridge(con)
+        field_media.init_field(con)
 
 
 def rows(cur) -> list[dict]:
@@ -174,6 +177,7 @@ hub = Hub()
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    field_media.resume_queue()  # photo checks still waiting when the server stopped
     yield
 
 
@@ -475,10 +479,12 @@ async def ws(socket: WebSocket):
 
 import bridge  # noqa: E402
 import v1  # noqa: E402
+import field_media  # noqa: E402
 
 app.include_router(v1.router)
 app.include_router(bridge.router)
 app.include_router(bridge.shelter_router)
+app.include_router(field_media.router)
 app.include_router(_places.router)
 from agents import api as _agents_api  # noqa: E402
 app.include_router(_agents_api.router)

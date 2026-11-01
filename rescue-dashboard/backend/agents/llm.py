@@ -12,6 +12,7 @@ If no key, no internet, a timeout or any error: callers get None and use the rul
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Optional, Type
@@ -23,6 +24,7 @@ except ImportError:  # python-dotenv not installed: plain environment variables 
     pass
 
 TIMEOUT_S = float(os.environ.get("AI_TIMEOUT", "12"))
+MAX_PATIENT_WAIT_S = float(os.environ.get("AI_MAX_WAIT", "60"))
 DEFAULT_MODELS = {"groq": "openai/gpt-oss-120b", "gemini": "gemini-2.5-flash"}
 
 _model_cache: dict = {}
@@ -77,19 +79,51 @@ def _record(ok: bool, started: float, error: Optional[str] = None) -> None:
                  at=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
-def structured(schema: Type, system: str, user: str):
-    """Ask the model for an answer in a fixed Pydantic schema. Returns an instance or None."""
+def _rate_limit_wait(err: str) -> Optional[float]:
+    """Seconds Groq/Gemini asks us to wait, if this error is a rate limit (429); else None."""
+    low = err.lower()
+    if "ratelimit" not in low.replace(" ", "") and "429" not in low and "rate limit" not in low:
+        return None
+    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", err)
+    return (int(m.group(1) or 0) * 60 + float(m.group(2))) if m else 10.0
+
+
+def structured(schema: Type, system: str, user: str, patient: bool = False):
+    """Ask the model for an answer in a fixed Pydantic schema. Returns an instance or None.
+
+    patient=True (for work nobody is waiting on, e.g. the Verifier after the SOS is shown):
+    on a rate limit, wait what the provider asks (up to MAX_PATIENT_WAIT_S in total) and retry,
+    instead of falling back to the rules at once."""
     m = chat_model()
     if m is None:
         return None
     started = time.time()
-    try:
-        out = m.with_structured_output(schema).invoke([("system", system), ("human", user)])
-        _record(True, started)
-        return out
-    except Exception as exc:  # network, quota, bad output: caller falls back to rules
-        _record(False, started, f"{type(exc).__name__}: {str(exc)[:300]}")
-        return None
+    messages = [("system", system), ("human", user)]
+    fixed_once, waited = False, 0.0
+    while True:
+        try:
+            out = m.with_structured_output(schema).invoke(messages)
+            _record(True, started)
+            return out
+        except Exception as exc:  # network, quota, bad output: caller falls back to rules
+            err = f"{type(exc).__name__}: {str(exc)[:300]}"
+            # The model sometimes fills a field with a value outside the allowed list; Groq then
+            # rejects the answer ("tool call validation failed"). One retry, with a reminder, fixes
+            # most of these (seen live: ~1 in 8 messages in a burst).
+            low = err.lower()
+            bad_output = "validation failed" in low or "did not match schema" in low or "failed to call a function" in low
+            if bad_output and not fixed_once:
+                fixed_once = True
+                messages = [("system", system + "\nUse ONLY the allowed values for every field; leave a field empty if unsure."),
+                            ("human", user)]
+                continue
+            wait = _rate_limit_wait(err) if patient else None
+            if wait is not None and waited + wait <= MAX_PATIENT_WAIT_S:
+                time.sleep(wait + 0.5)
+                waited += wait + 0.5
+                continue
+            _record(False, started, err)
+            return None
 
 
 def text(system: str, user: str) -> Optional[str]:

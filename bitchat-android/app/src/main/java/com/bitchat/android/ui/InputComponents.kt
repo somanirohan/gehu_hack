@@ -455,37 +455,6 @@ private fun PendingAttachmentCard(
     }
 }
 
-private suspend fun fetchLocationCoordinates(context: Context): Pair<Double, Double>? = withContext(Dispatchers.IO) {
-    try {
-        val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (!fineGranted && !coarseGranted) return@withContext null
-
-        val client = LocationServices.getFusedLocationProviderClient(context)
-        val deferred = CompletableDeferred<Pair<Double, Double>?>()
-        client.lastLocation.addOnSuccessListener { loc ->
-            if (loc != null) {
-                deferred.complete(Pair(loc.latitude, loc.longitude))
-            } else {
-                val locMgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                val gpsLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
-                val netLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
-                val best = gpsLoc ?: netLoc
-                deferred.complete(best?.let { Pair(it.latitude, it.longitude) })
-            }
-        }.addOnFailureListener {
-            val locMgr = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            val gpsLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.GPS_PROVIDER) }.getOrNull()
-            val netLoc = runCatching { locMgr?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER) }.getOrNull()
-            val best = gpsLoc ?: netLoc
-            deferred.complete(best?.let { Pair(it.latitude, it.longitude) })
-        }
-        deferred.await()
-    } catch (_: Exception) {
-        null
-    }
-}
-
 @Composable
 fun MessageInput(
     value: TextFieldValue,
@@ -501,12 +470,19 @@ fun MessageInput(
     nickname: String,
     showMediaButtons: Boolean,
     mentionPeerIdentities: Map<String, PeerIdentity> = emptyMap(),
+    autoAttachLocation: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var pendingAttachment by remember { mutableStateOf<PendingAttachment?>(null) }
-    var isFetchingLocation by remember { mutableStateOf(false) }
+
+    // Location is attached to every public mesh message automatically (see
+    // ChatViewModel.sendChatMessage). This only tracks it so the composer can show
+    // whether a position is available.
+    var currentCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var locationChecked by remember { mutableStateOf(false) }
+    var locationRefreshTick by remember { mutableStateOf(0) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -514,18 +490,18 @@ fun MessageInput(
         val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
-            coroutineScope.launch {
-                isFetchingLocation = true
-                val coords = fetchLocationCoordinates(context)
-                if (coords != null) {
-                    pendingAttachment = PendingAttachment.Location(coords.first, coords.second)
-                } else {
-                    Toast.makeText(context, "Could not acquire GPS location. Please check GPS settings.", Toast.LENGTH_SHORT).show()
-                }
-                isFetchingLocation = false
-            }
+            locationRefreshTick++
         } else {
-            Toast.makeText(context, "Location permission required to attach location.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Location permission is needed to share your location.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(autoAttachLocation, locationRefreshTick) {
+        if (!autoAttachLocation) return@LaunchedEffect
+        while (true) {
+            currentCoords = com.bitchat.android.util.LocationFetcher.fetch(context)
+            locationChecked = true
+            kotlinx.coroutines.delay(30_000L)
         }
     }
 
@@ -646,6 +622,37 @@ fun MessageInput(
     }
 
     Column(modifier = modifier) {
+        if (autoAttachLocation && locationChecked) {
+            val coords = currentCoords
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (com.bitchat.android.util.LocationFetcher.hasPermission(context)) {
+                            locationRefreshTick++
+                        } else {
+                            locationPermissionLauncher.launch(
+                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                            )
+                        }
+                    }
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (coords != null) {
+                        "📍 Location attached · %.5f, %.5f".format(java.util.Locale.US, coords.first, coords.second)
+                    } else {
+                        "📍 Location not available · tap to retry"
+                    },
+                    fontSize = 12.sp,
+                    fontFamily = BitchatFontFamily,
+                    color = if (coords != null) palette.textTertiary else MaterialTheme.colorScheme.error,
+                    maxLines = 1
+                )
+            }
+        }
+
         AnimatedVisibility(
             visible = pendingAttachment != null,
             enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) + expandVertically(tween(BitchatMotion.STANDARD_MS)),
@@ -860,38 +867,6 @@ fun MessageInput(
                                     ) {
                                         Text(
                                             text = "🆘",
-                                            fontSize = 20.sp
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
-                                            .clickable {
-                                                val fineGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                                                val coarseGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                                                if (fineGranted || coarseGranted) {
-                                                    coroutineScope.launch {
-                                                        isFetchingLocation = true
-                                                        val coords = fetchLocationCoordinates(context)
-                                                        if (coords != null) {
-                                                            pendingAttachment = PendingAttachment.Location(coords.first, coords.second)
-                                                        } else {
-                                                            Toast.makeText(context, "Could not acquire GPS location. Please check GPS settings.", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                        isFetchingLocation = false
-                                                    }
-                                                } else {
-                                                    locationPermissionLauncher.launch(
-                                                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                                                    )
-                                                }
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (isFetchingLocation) "⏳" else "📍",
                                             fontSize = 20.sp
                                         )
                                     }

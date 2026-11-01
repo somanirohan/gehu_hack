@@ -416,7 +416,7 @@ if (isMeshTimeline) {
         },
         onSend = {
             if (messageText.text.trim().isNotEmpty()) {
-                viewModel.sendMessage(
+                viewModel.sendChatMessage(
                     content = messageText.text.trim(),
                     onAccepted = { acc: Boolean ->
                         if (acc) {
@@ -479,7 +479,10 @@ if (isMeshTimeline) {
                 currentChannel = currentChannel,
                 nickname = nickname,
                 colorScheme = colorScheme,
-                showMediaButtons = showMediaButtons
+                showMediaButtons = showMediaButtons,
+                // Public mesh timeline: every message carries the sender's location.
+                autoAttachLocation = currentChannel == null &&
+                    selectedLocationChannel !is com.bitchat.android.geohash.ChannelID.Location
             )
           }
         }
@@ -760,6 +763,7 @@ fun ChatInputSection(
     nickname: String,
     colorScheme: ColorScheme,
     showMediaButtons: Boolean,
+    autoAttachLocation: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -840,6 +844,7 @@ fun ChatInputSection(
             nickname = nickname,
             showMediaButtons = showMediaButtons,
             mentionPeerIdentities = mentionPeerIdentities,
+            autoAttachLocation = autoAttachLocation,
             modifier = Modifier.fillMaxWidth()
         )
     }

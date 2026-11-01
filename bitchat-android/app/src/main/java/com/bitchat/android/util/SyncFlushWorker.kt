@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.bitchat.android.net.CivilizationSyncClient
+import com.bitchat.android.net.FieldMediaUploader
 import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.services.SyncBundleBuilder
 import com.bitchat.android.services.SyncPreferences
@@ -37,24 +38,37 @@ class SyncFlushWorker(
         }
 
         val shelters = AppStateStore.shelters.value
-        val messages = AppStateStore.publicMessages.value
-            .takeLast(MAX_MESSAGES_PER_FLUSH)
+        val allPublic = AppStateStore.publicMessages.value
+        val messages = allPublic.takeLast(MAX_MESSAGES_PER_FLUSH)
         val incidents = SyncBundleBuilder.extractIncidents(messages)
 
+        // 1) text SOS / messages / shelters (the existing bundle)
         val bundle = SyncBundleBuilder.build(shelters, incidents)
-        if (bundle.incidentCount == 0 && bundle.shelterCount == 0) {
-            Log.i(TAG, "Nothing to sync, skipping flush")
-            prefs.lastSyncedAt = System.currentTimeMillis()
-            prefs.lastSyncError = null
-            return@withContext Result.success()
+        var textOk = true
+        if (bundle.incidentCount > 0 || bundle.shelterCount > 0) {
+            textOk = CivilizationSyncClient(ctx).postBundle(bundle.json)
+            if (textOk) {
+                prefs.lastFlushBytes = bundle.bytes
+                prefs.lastSyncError = null
+            }
         }
 
-        val ok = CivilizationSyncClient(ctx).postBundle(bundle.json)
-        if (ok) {
-            prefs.lastFlushBytes = bundle.bytes
-            prefs.lastSyncError = null
-            return@withContext Result.success()
+        // 2) photos and voice notes (sent here or received from nearby phones)
+        val media = try {
+            FieldMediaUploader(ctx).uploadPending(allPublic)
+        } catch (e: Exception) {
+            Log.w(TAG, "Media upload crashed: ${e.message}")
+            FieldMediaUploader.Outcome.RETRY_LATER
         }
-        Result.retry()
+
+        if (!textOk || media == FieldMediaUploader.Outcome.RETRY_LATER) {
+            return@withContext Result.retry()
+        }
+        if (bundle.incidentCount == 0 && bundle.shelterCount == 0 && media == FieldMediaUploader.Outcome.NOTHING) {
+            Log.i(TAG, "Nothing to sync")
+            prefs.lastSyncedAt = System.currentTimeMillis()
+            prefs.lastSyncError = null
+        }
+        Result.success()
     }
 }

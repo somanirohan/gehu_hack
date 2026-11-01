@@ -147,21 +147,6 @@ fun AudioMessageItem(
                 }
             }
 
-            // Mockup reaction badge: funny reaction emoji floating at the bottom edge for sent voice note
-            if (isSelf) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 6.dp, y = 8.dp)
-                        .size(20.dp)
-                        .background(colorScheme.surface, CircleShape)
-                        .border(1.dp, colorScheme.outlineVariant, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "😂", fontSize = 11.sp)
-                }
-            }
-
             // Cancel sending transfer if active
             val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
             if (showCancel) {

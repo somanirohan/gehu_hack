@@ -51,7 +51,9 @@ export default function FeedPanel({ tick, onOpenIncident = () => {}, officer = '
               <div className="fphotos">
                 {e.media.map((m) => m.pending
                   ? <span key={m.media_id} className="fpending">Photo arriving…</span>
-                  : <a key={m.media_id} href={m.url} target="_blank" rel="noreferrer"><img src={m.thumb} alt="Photo from the field" /></a>)}
+                  : m.mime?.startsWith('audio/')
+                    ? <audio key={m.media_id} className="faudio" controls preload="none" src={m.url} aria-label="Voice note from the field" />
+                    : <a key={m.media_id} href={m.url} target="_blank" rel="noreferrer"><img src={m.thumb} alt="Photo from the field" /></a>)}
               </div>
             )}
             <dl className="fields">

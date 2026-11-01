@@ -21,7 +21,7 @@ calls = []
 _real_structured = llm.structured
 
 
-def fake_structured(schema, system, user):
+def fake_structured(schema, system, user, **kw):  # kw: e.g. patient=True from the Verifier
     if not llm.provider():  # same contract as the real one: no key -> None
         return None
     if schema is not triage.Triage:  # e.g. the Verifier Agent's verdict
@@ -124,7 +124,7 @@ def test_verifier_rules_test_word_and_outside_area():
 
 
 def test_verifier_uses_ai_verdict_with_label():
-    def fake(schema, system, user):
+    def fake(schema, system, user, **kw):
         if schema is verifier.Verdict:
             assert "different_senders" in user  # the AI only sees gathered evidence
             assert "practice_drill" not in user  # drill status is shown by the badge, not judged
@@ -183,7 +183,7 @@ def test_planner_check_rejects_impossible_ai_plan():
     incs = _two_incidents()
     ids = [i["id"] for i in incs]
 
-    def fake(schema, system, user):
+    def fake(schema, system, user, **kw):
         if schema is planner.Plan:
             data = json.loads(user)
             opts = data["candidates_by_incident"]

@@ -51,6 +51,12 @@ export default function LiveLayers({ tick, officer = 'Duty Officer', pickMode = 
             <Popup>
               <strong>{active ? 'Blocked' : 'Unverified report'}: {h.note || h.kind.replace('_', ' ')}</strong>
               <div>Source: {h.source} · {h.reports} report{h.reports > 1 ? 's' : ''}</div>
+              {h.photo && (
+                <a href={h.photo} target="_blank" rel="noreferrer" className="hz-proof">
+                  <img src={h.photo} alt="Photo proof of the blockage" />
+                  <span>Photo proof</span>
+                </a>
+              )}
               <div className="popup-actions">
                 {!active && <button onClick={() => liveApi.confirm(h.id, officer)}>Confirm block</button>}
                 <button onClick={() => liveApi.clear(h.id, officer)}>Road open again</button>

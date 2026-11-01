@@ -20,7 +20,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from concurrent.futures import ThreadPoolExecutor
+
+from fastapi import APIRouter, BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -149,6 +151,7 @@ def _is_drill(bundle: CivBundle) -> bool:
 
 
 AI_MAX_PER_BUNDLE = 12  # the AI reads at most this many NEW messages per upload; the rest use the word rules
+AI_PARALLEL = 3         # read up to 3 new messages at once (one by one took 40 s for 8: the phone gives up at 30 s)
 
 
 def _triage_new(bundle: CivBundle) -> dict:
@@ -159,16 +162,17 @@ def _triage_new(bundle: CivBundle) -> dict:
     with core.db() as con:
         seen = {r[0] for r in con.execute(
             f"SELECT event_id FROM events WHERE event_id IN ({','.join('?' * len(ids))})", ids)}
-    out: dict = {}
-    for inc in bundle.incidents:
-        if f"bitchat-{inc.id}" in seen or inc.category or len(out) >= AI_MAX_PER_BUNDLE:
-            continue
-        out[inc.id] = triage.read(inc.content, inc.role)
-    return out
+    todo = [inc for inc in bundle.incidents if f"bitchat-{inc.id}" not in seen and not inc.category]
+    todo = list({inc.id: inc for inc in todo}.values())[:AI_MAX_PER_BUNDLE]
+    if not todo:
+        return {}
+    with ThreadPoolExecutor(max_workers=AI_PARALLEL) as pool:
+        readings = list(pool.map(lambda inc: triage.read(inc.content, inc.role), todo))
+    return {inc.id: r for inc, r in zip(todo, readings)}
 
 
 @router.post("/civ-sync")
-async def civ_sync(bundle: CivBundle):
+async def civ_sync(bundle: CivBundle, background: BackgroundTasks):
     """Receives the app's existing sync bundle. Always 2xx unless the body is invalid,
     so the phone marks the flush done; repeats are ignored."""
     results, notes, accepted = [], [], []
@@ -194,7 +198,9 @@ async def civ_sync(bundle: CivBundle):
     if changed_shelters:
         notes.append(("shelters", {"changed": changed_shelters}))
     await v1._send(notes)
-    await v1._after_events(results)
+    # Verifier + Route Watch run right AFTER the phone gets its answer: the SOS is already saved
+    # and on the dashboard, and the phone must not wait (or time out) for the extra AI calls.
+    background.add_task(v1._after_events, results)
     return {"ok": True, "received": len(bundle.incidents), "new": new, "duplicates": len(results) - new,
             "shelters_changed": changed_shelters, "accepted_ids": accepted}
 

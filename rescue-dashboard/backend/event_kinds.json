@@ -3,6 +3,9 @@
   "label": "SOS",
   "icon": "🆘",
   "fields": [
+   "transcript_en",
+   "transcript",
+   "spoken_language",
    "ai_summary",
    "type",
    "people",
@@ -18,32 +21,52 @@
    "category_source",
    "rule_guess",
    "matched_words",
-   "ai_error"
+   "ai_error",
+   "stt_model",
+   "stt_error"
   ]
  },
  "message": {
   "label": "Message",
   "icon": "💬",
   "fields": [
+   "transcript_en",
+   "transcript",
+   "spoken_language",
    "text",
    "ai_summary",
    "sender",
    "role",
    "category_source",
-   "ai_error"
+   "ai_error",
+   "stt_model",
+   "stt_error"
   ]
  },
  "photo": {
   "label": "Photo",
   "icon": "📷",
   "fields": [
-   "caption"
+   "ai_status",
+   "ai_hazard",
+   "ai_description",
+   "ai_blocks_road",
+   "ai_confidence",
+   "caption",
+   "location_source",
+   "sender",
+   "role",
+   "ai_model",
+   "ai_error"
   ]
  },
  "road_block": {
   "label": "Road blocked",
   "icon": "⛔",
   "fields": [
+   "transcript_en",
+   "transcript",
+   "spoken_language",
    "ai_summary",
    "note",
    "radius_m",
@@ -52,7 +75,9 @@
    "category_source",
    "ai_reasons",
    "matched_words",
-   "ai_error"
+   "ai_error",
+   "stt_model",
+   "stt_error"
   ]
  },
  "medical_need": {
@@ -78,6 +103,20 @@
   "fields": [
    "name",
    "people"
+  ]
+ },
+ "voice": {
+  "label": "Voice note",
+  "icon": "🎙️",
+  "fields": [
+   "transcript_en",
+   "transcript",
+   "spoken_language",
+   "note",
+   "sender",
+   "role",
+   "stt_model",
+   "stt_error"
   ]
  }
 }

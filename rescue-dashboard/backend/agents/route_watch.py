@@ -20,6 +20,7 @@ Drones are never re-routed (they fly). A unit is never alerted about its own inc
 from __future__ import annotations
 
 import json
+import os
 import math
 import sqlite3
 import time
@@ -39,7 +40,7 @@ AUTO_MAX_MIN = 5      # detours up to this many extra minutes are applied at onc
 OBSTACLE_RADIUS_M = 60
 BLOCK_TYPES = {"landslide", "collapse", "flood", "accident"}          # an SOS of these types may block the road
 HELP_TYPES = {"injured", "accident", "medical", "trapped", "collapse", "fall"}
-RUNS_DB = Path(__file__).resolve().parent.parent / "agent_runs.db"
+RUNS_DB = Path(os.environ.get("AGENT_RUNS_DB") or Path(__file__).resolve().parent.parent / "agent_runs.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS route_alerts (
@@ -387,7 +388,7 @@ def watch(event_ids) -> list:
                 if hits and json.loads(ev.get("media") or "[]"):
                     import v1
                     urls = v1.media_urls(con, json.loads(ev["media"]))
-                    photo = next((u["url"] for u in urls if u["url"]), None)
+                    photo = v1.first_photo(urls)  # voice notes are media too: never show audio as the photo
             for a, unit, d in hits:
                 tid = f"rw-{eid}-{a['id']}"
                 st = graph().invoke({"thread_id": tid, "event": ev, "assignment": a, "unit": unit, "distance_m": d,

@@ -89,7 +89,7 @@ def test_sitrep_rules_and_numbers_from_code():
 
 def test_sitrep_drops_invented_numbers():
     os.environ["GROQ_API_KEY"] = "test"
-    llm.structured = lambda schema, system, user: commander.SitrepText(
+    llm.structured = lambda schema, system, user, **kw: commander.SitrepText(
         headline="2 open incidents.", situation="Two incidents are open.",
         concerns=["#1 trapped needs a unit.", "4000 people are missing."],
         actions=["Approve a unit for #1.", "Send 77 boats."])

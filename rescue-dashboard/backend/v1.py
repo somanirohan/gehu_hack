@@ -174,12 +174,19 @@ def _store_media(con, media_id: str, raw: bytes, mime: str | None) -> None:
                 (media_id, f"/media/{name}", thumb, mime or "image/jpeg", len(raw), now()))
 
 
+def first_photo(media: list[dict]) -> str | None:
+    """URL of the first image among an event's media (voice notes are media too, never a photo)."""
+    return next((x["url"] for x in media if x["url"] and (x.get("mime") or "image/").startswith("image/")), None)
+
+
 def media_urls(con, ids: list[str]) -> list[dict]:
     out = []
     for mid in ids:
         m = con.execute("SELECT * FROM media WHERE media_id=?", (mid,)).fetchone()
-        out.append({"media_id": mid, "url": m["path"] if m else None, "thumb": (m["thumb"] or m["path"]) if m else None,
-                    "pending": m is None})
+        mime = (m["mime"] or "image/jpeg") if m else None
+        out.append({"media_id": mid, "url": m["path"] if m else None,
+                    "thumb": (m["thumb"] or (m["path"] if mime.startswith("image/") else None)) if m else None,
+                    "mime": mime, "pending": m is None})
     return out
 
 
@@ -404,7 +411,7 @@ def handle_event(con, e: EventIn) -> tuple[dict, list]:
             raw = base64.b64decode(m.b64.split(",", 1)[1] if m.b64.startswith("data:") else m.b64)
             _store_media(con, m.media_id, raw, m.mime)
     media_ids = [m.media_id for m in e.media]
-    photo = next((x["url"] for x in media_urls(con, media_ids) if x["url"]), None)
+    photo = first_photo(media_urls(con, media_ids))
     reg = kinds().get(e.kind, {})
     p = e.payload
     incident_id = hazard_id = None
@@ -514,7 +521,7 @@ async def promote(event_id: str, type: str = "other", officer: str = "Duty Offic
         res = core.ingest(con, core.ReportIn(external_id=f"promoted-{event_id}", source="manual", type=type if type in logic.TYPE_WEIGHT else "other",
                                              lat=ev["lat"], lon=ev["lon"], message=str(p.get("text") or p.get("caption") or "")[:500],
                                              reported_at=ev["created_at"]))
-        photo = next((x["url"] for x in media_urls(con, json.loads(ev["media"])) if x["url"]), None)
+        photo = first_photo(media_urls(con, json.loads(ev["media"])))
         con.execute("UPDATE incidents SET photo=COALESCE(photo, ?) WHERE id=?", (photo, res["incident_id"]))
         con.execute("UPDATE events SET incident_id=?, handled_as=? WHERE event_id=?", (res["incident_id"], f"promoted by {officer}", event_id))
         core.write_log(con, officer, "event_promoted", res["incident_id"], event_id=event_id)

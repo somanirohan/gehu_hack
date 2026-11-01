@@ -267,6 +267,8 @@ All endpoints with "try it" buttons: **http://localhost:8001/docs**
 | bitchat app | `POST /api/v1/bitchat/civ-sync` | The app's existing sync. Optional extra fields per item: `category`, `people`, `media_ids`. The reply lists `accepted_ids`. |
 | Camera phone / AI | `POST /api/v1/events` | Example below. Shown as an AI suggestion. |
 | Photos | `POST /api/v1/media` | Multipart with `media_id` and `file`. Can arrive before or after the message that names it. |
+| Voice note (any language) | `POST /api/v1/field/voice` | Multipart: `file`, optional `lat`, `lon`, `sender`, `role`, `language` (hint such as `hi`, `ta`). Transcribed, translated to English, then handled like a typed message (SOS / road block / message). |
+| Photo to check for road hazards | `POST /api/v1/field/photo` | Multipart: `file`, optional `lat`, `lon` (else read from the photo's GPS), `caption`. A fallen tree, landslide or flooded road asks the officer to add a road blockage, with the photo as proof. |
 | Older format | `POST /api/reports` | Still works. |
 
 Camera example:
@@ -281,6 +283,19 @@ Camera example:
 Incident types: `trapped, injured, medical, fire, flood, landslide, collapse, accident,
 missing, crowd, fall, other`. Any new `kind` (for example `supply_need`) shows up in the
 Live feed automatically. Add it to `backend/event_kinds.json` to give it a label and icon.
+
+### Voice notes and photos (AI)
+
+Speech to text and the photo check need an AI key in `backend/.env`:
+
+```
+GROQ_API_KEY=...      # Whisper large-v3 for speech, a vision model for photos, translation
+GEMINI_API_KEY=...    # optional: used when Groq is missing or fails
+```
+
+Without a key, voice notes and photos are still saved and shown in the Live feed (the officer can
+listen and look), but nothing is transcribed or checked. Photos and voice notes arrive from the mesh
+app's sync automatically.
 
 ## Decision rules
 

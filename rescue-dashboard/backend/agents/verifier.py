@@ -157,7 +157,8 @@ def verify(incident_id: int) -> Optional[dict]:
         # The AI judges every report as if it were real: whether it is practice data is already
         # shown by the DRILL badge, so that flag is NOT given to the AI.
         for_ai = {k: v for k, v in ev.items() if k != "practice_drill"}
-        v = llm.structured(Verdict, SYSTEM, "EVIDENCE (JSON):\n" + json.dumps(for_ai, ensure_ascii=False))
+        # patient: the SOS is already saved and shown; better a real verdict a few seconds later than a rule one
+        v = llm.structured(Verdict, SYSTEM, "EVIDENCE (JSON):\n" + json.dumps(for_ai, ensure_ascii=False), patient=True)
         if v is not None:
             verdict, reasons, source = v.verdict, v.reasons, llm.label()
         else:

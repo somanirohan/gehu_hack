@@ -448,7 +448,8 @@ class ChatViewModel(
         val trimmed = message.trim().ifEmpty { "EMERGENCY SOS! Need immediate assistance!" }
         viewModelScope.launch {
             val coords = currentLocation()
-            val geoTag = coords?.let { " geo:%.5f,%.5f".format(it.first, it.second) } ?: ""
+            if (coords == null) notifyLocationUnavailable()
+            val geoTag = coords?.let { com.bitchat.android.util.LocationFetcher.geoTag(it) } ?: ""
             val body = "🆘 $trimmed$geoTag"
             // Force category = CIVILIAN so subscribed responders pick it up regardless of the
             // sender's normal role.
@@ -456,56 +457,52 @@ class ChatViewModel(
         }
     }
 
-    /** Append the sender's current GPS to an outgoing broadcast (composer 📍 toggle). */
+    /**
+     * Entry point for the composer's send button. Messages to the public mesh timeline
+     * always carry the sender's location (there is no opt-out); private chats, channels,
+     * geohash channels and slash-commands are sent unchanged.
+     */
+    fun sendChatMessage(content: String, onAccepted: (Boolean) -> Unit = {}) {
+        if (isPublicMeshContext() && !content.startsWith("/")) {
+            sendBroadcastWithGeotag(content, onAccepted)
+        } else {
+            sendMessage(content, onAccepted)
+        }
+    }
+
+    /** True when an outgoing message would go to the public mesh timeline. */
+    fun isPublicMeshContext(): Boolean =
+        state.getSelectedPrivateChatPeerValue() == null &&
+            state.getCurrentChannelValue() == null &&
+            state.selectedLocationChannel.value !is com.bitchat.android.geohash.ChannelID.Location
+
+    /** Append the sender's current GPS to an outgoing public mesh broadcast. */
     fun sendBroadcastWithGeotag(
         content: String,
         onAccepted: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
+            if (content.contains("geo:")) {
+                sendMessage(content, onAccepted)
+                return@launch
+            }
             val coords = currentLocation()
-            val geoTag = coords?.let { " geo:%.5f,%.5f".format(it.first, it.second) } ?: ""
-            val fullContent = if (content.contains("geo:")) content else content + geoTag
-            sendMessage(fullContent, onAccepted)
+            if (coords == null) notifyLocationUnavailable()
+            val geoTag = coords?.let { com.bitchat.android.util.LocationFetcher.geoTag(it) } ?: ""
+            sendMessage(content + geoTag, onAccepted)
         }
     }
 
-    private suspend fun currentLocation(): Pair<Double, Double>? {
-        return withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val ctx: android.app.Application = getApplication()
-                val havePermission = androidx.core.app.ActivityCompat.checkSelfPermission(
-                    ctx, android.Manifest.permission.ACCESS_FINE_LOCATION
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
-                    androidx.core.app.ActivityCompat.checkSelfPermission(
-                        ctx, android.Manifest.permission.ACCESS_COARSE_LOCATION
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                if (!havePermission) return@withContext null
-                val client = com.google.android.gms.location.LocationServices
-                    .getFusedLocationProviderClient(ctx)
-                val result = kotlinx.coroutines.CompletableDeferred<Pair<Double, Double>?>()
-                client.lastLocation
-                    .addOnSuccessListener { loc ->
-                        if (loc != null) {
-                            result.complete(Pair(loc.latitude, loc.longitude))
-                        } else {
-                            val locMgr = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-                            val gpsLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) }.getOrNull()
-                            val netLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) }.getOrNull()
-                            val best = gpsLoc ?: netLoc
-                            result.complete(best?.let { Pair(it.latitude, it.longitude) })
-                        }
-                    }
-                    .addOnFailureListener {
-                        val locMgr = ctx.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
-                        val gpsLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) }.getOrNull()
-                        val netLoc = runCatching { locMgr?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) }.getOrNull()
-                        val best = gpsLoc ?: netLoc
-                        result.complete(best?.let { Pair(it.latitude, it.longitude) })
-                    }
-                result.await()
-            } catch (_: Exception) { null }
-        }
+    private fun notifyLocationUnavailable() {
+        android.widget.Toast.makeText(
+            getApplication(),
+            "📍 Location not available: message sent without location",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
     }
+
+    private suspend fun currentLocation(): Pair<Double, Double>? =
+        com.bitchat.android.util.LocationFetcher.fetch(getApplication())
 
     val meshServiceFacade: MeshService
         get() = mesh

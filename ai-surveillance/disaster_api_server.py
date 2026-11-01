@@ -43,7 +43,7 @@ except ImportError:
 from rag.sqlite_store import DisasterSQLiteStore
 
 # Groq Configuration
-DEFAULT_GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+DEFAULT_GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 app = FastAPI(

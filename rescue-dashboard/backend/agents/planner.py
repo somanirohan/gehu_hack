@@ -21,6 +21,7 @@ execute  Uses the same dispatch code as the "Approve dispatch" button, so respon
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -36,7 +37,7 @@ from agents import llm
 
 MAX_INCIDENTS = 12          # plan at most this many waiting incidents at once
 CANDIDATES_PER_INCIDENT = 3  # road ETA is computed for the nearest N capable units
-RUNS_DB = Path(__file__).resolve().parent.parent / "agent_runs.db"
+RUNS_DB = Path(os.environ.get("AGENT_RUNS_DB") or Path(__file__).resolve().parent.parent / "agent_runs.db")
 
 
 # ---------------------------------------------------------------- AI output schema

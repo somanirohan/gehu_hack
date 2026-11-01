@@ -11,3 +11,5 @@ tools/edge_sync_state.json
 .venv/
 backend/.env
 backend/agent_runs.db
+backend/agent_runs.db-wal
+backend/agent_runs.db-shm

@@ -16,6 +16,7 @@ import CityLayers from './CityLayers'
 import PlannerPanel from './PlannerPanel'
 import CommanderPanel from './CommanderPanel'
 import RouteAlerts from './RouteAlerts'
+import PhotoHazards, { PhotoHazardMarkers, usePhotoHazards, photoApi } from './PhotoHazards'
 import { IncidentMarkers, UnitMarkers, SEV, TypeIcon } from './MapMarkers'
 import AgentFeed, { useAgentItems } from './AgentFeed'
 
@@ -741,12 +742,14 @@ export default function App() {
   const [simulation, setSimulation] = useState(null)
 
   const [tick, setTick] = useState(0)
+  const photoHazards = usePhotoHazards(tick)
   const [places, setPlaces] = useState({ center: null, places: [] })
   const [shelters, setShelters] = useState([])
   const [sync, setSync] = useState(null)
   const [toast, setToast] = useState(null)
   const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true, names: true, labels: true })
-  const [pickMode, setPickMode] = useState(null)
+  const [pickMode, setPickMode] = useState(null)  // 'block' | 'photo:<id>'
+  const [photoFocus, setPhotoFocus] = useState(null)
   const [sideTab, setSideTab] = useState('incident')
   const [agentSteps, setAgentSteps] = useState([])
   // panels the officer can close and reopen (remembered in this browser)
@@ -863,6 +866,10 @@ export default function App() {
         setAgentSteps((s) => (s.length && s[0].run_id !== msg.data.run_id ? [msg.data] : [...s, msg.data]))
       }
       if (msg?.event === 'shelters') api.shelters().then(setShelters).catch(() => {})
+      if (msg?.event === 'photo_hazard' && msg.data?.status === 'pending') {
+        setToast({ kind: 'photo', text: `Photo shows: ${msg.data.label}. Add a road blockage there?`, at: Date.now() })
+        beep()
+      }
     }
     const stop = liveUpdates(onMessage, setLive)
     const timer = setInterval(() => { refresh(); setTick((t) => t + 1) }, 15000)
@@ -901,6 +908,17 @@ export default function App() {
   }, [toast])
 
   const onPick = async ([lat, lon]) => {
+    if (pickMode?.startsWith('photo:')) {
+      const id = Number(pickMode.slice(6))
+      setPickMode(null)
+      try {
+        await photoApi.accept(id, officer, [lat, lon])
+        setTick((t) => t + 1)
+      } catch (e) {
+        setError(e.message)
+      }
+      return
+    }
     if (pickMode !== 'block') return
     setPickMode(null)
     const note = window.prompt('What is blocking the road? (e.g. landslide debris, water over road)', 'Road blocked') // eslint-disable-line no-alert
@@ -1101,6 +1119,8 @@ export default function App() {
 
             <UnitMarkers responders={responders} showLabels={layers.labels} />
 
+            <PhotoHazardMarkers items={photoHazards} onSelect={(id) => { setPhotoFocus(id); if (!panels.routeWatch) togglePanel('routeWatch') }} />
+
             <IncidentMarkers incidents={incidents} selectedId={selectedId} onSelect={openIncident} statusLabel={STATUS_LABEL} showLabels={layers.labels} />
 
             {simRoute.length > 1 && simCurrent && (
@@ -1191,7 +1211,20 @@ export default function App() {
             </>}
           </div>
 
-          <RouteAlerts tick={tick} officer={officer} open={panels.routeWatch} onToggle={() => togglePanel('routeWatch')} />
+          <div className="map-prompts">
+            <RouteAlerts tick={tick} officer={officer} open={panels.routeWatch} onToggle={() => togglePanel('routeWatch')} />
+            <PhotoHazards items={photoHazards} officer={officer} focusId={photoFocus}
+              pickingId={pickMode?.startsWith('photo:') ? Number(pickMode.slice(6)) : null}
+              onPickSpot={(id) => setPickMode(pickMode === `photo:${id}` ? null : `photo:${id}`)}
+              onDone={() => setTick((t) => t + 1)} />
+          </div>
+
+          {pickMode && pickMode !== 'block' && (
+            <div className="pick-hint" role="status">
+              Click the map where the photo was taken; the road blockage goes there
+              <button onClick={() => setPickMode(null)}>Cancel</button>
+            </div>
+          )}
 
           <AgentFeed items={agentItems} max={present ? 10 : 5} open={panels.agents} onToggle={() => togglePanel('agents')} />
 

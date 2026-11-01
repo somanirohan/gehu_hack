@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  * Pushes new chat messages to the civilization endpoint automatically.
  *
  * Watches the public mesh timeline and the shelter list. Whenever a message
- * the sync bundle would carry (geo-tagged) is sent OR received, or a shelter
+ * the sync carries (geo-tagged text, a photo or a voice note) is sent OR received, or a shelter
  * changes, it schedules a flush. That makes every online phone a gateway for
  * nearby offline phones. A short debounce turns a burst of messages into one
  * upload. The "Send now" button in Sync settings is no longer required.
@@ -43,7 +43,11 @@ object AutoSyncTrigger {
         val syncableMessageIds = AppStateStore.publicMessages
             .map { messages ->
                 messages.asSequence()
-                    .filter { parseGeoTag(it.content) != null }
+                    .filter {
+                        parseGeoTag(it.content) != null ||
+                            it.type == com.bitchat.android.model.BitchatMessageType.Image ||
+                            it.type == com.bitchat.android.model.BitchatMessageType.Audio
+                    }
                     .map { it.id }
                     .toSet()
             }

@@ -575,3 +575,25 @@ path.route-line, path.route-rerouted, path.route-drone { stroke-width: 5px; }
 .sitrep-head .muted { font-size: 11px; color: var(--text-2); margin-left: auto; }
 .sitrep-body { margin: 0; max-height: 300px; overflow: auto; white-space: pre-wrap; font: 11.5px/1.5 var(--mono); color: var(--text); background: var(--surface-2); border-radius: 4px; padding: 8px; }
 .af-tag.ag-commander { background: var(--high-tint); color: var(--high-ink); }
+
+/* Photo hazards: photo reports waiting for the officer (stacked under Route Watch) */
+.map-prompts { position: absolute; top: 12px; left: 60px; z-index: 550; width: 340px; max-height: calc(100% - 80px); overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.map-prompts .route-alerts, .map-prompts .ra-tab { position: static; width: auto; max-height: none; overflow: visible; }
+.map-prompts .ra-tab { align-self: flex-start; }
+.photo-hazards { display: flex; flex-direction: column; gap: 6px; }
+.ph-item { background: var(--overlay); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--high); border-radius: var(--r); padding: 8px 10px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.ph-item.focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ph-title { display: flex; gap: 8px; align-items: center; font-weight: 700; margin-bottom: 4px; }
+.ph-photo { width: 100%; max-height: 150px; object-fit: cover; border-radius: 6px; display: block; }
+.ph-text { margin-top: 6px; }
+.ph-caption { margin-top: 4px; color: var(--text-2); font-style: italic; }
+.ph-meta { color: var(--text-2); font-size: 11.5px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.ph-noloc { color: var(--crit-ink); }
+.ph-error { margin-top: 6px; padding: 6px 8px; border-radius: var(--r); background: var(--crit-tint); color: var(--crit-ink); font-size: 12.5px; }
+.mk-photo { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; background: var(--high-tint); border: 2px solid var(--high); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.pick-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 600; background: var(--overlay); color: var(--text); border: 1px solid var(--focus); border-radius: var(--r); padding: 7px 10px; font-size: 13px; display: flex; gap: 10px; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.pick-hint button { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--r); padding: 3px 8px; cursor: pointer; }
+.hz-proof { display: block; margin: 6px 0; color: var(--link); font-size: 12px; }
+.hz-proof img { display: block; width: 180px; max-height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 2px; }
+.faudio { width: 100%; height: 34px; }
+
