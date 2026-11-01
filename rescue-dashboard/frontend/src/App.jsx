@@ -242,17 +242,6 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
               </span>
             )}
             <span className="chip">{syncText(sync)}</span>
-            {beaconCount > 0 && (
-              <button
-                type="button"
-                className="chip hot"
-                style={{ cursor: 'pointer', border: '1px solid var(--crit)', background: 'var(--crit-tint)', color: 'var(--crit-ink)', fontWeight: 700 }}
-                onClick={onOpenBeacons}
-                title="View active SOS Beacons & Live Capacities"
-              >
-                🚨 {beaconCount} Active Beacon{beaconCount > 1 ? 's' : ''}
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -267,15 +256,6 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
       </div>
 
       <div className="nav-actions">
-        <button
-          type="button"
-          className="theme-btn"
-          style={{ width: 'auto', padding: '0 10px', fontSize: '12px', fontWeight: 650, display: 'flex', alignItems: 'center', gap: '5px' }}
-          onClick={onOpenBeacons}
-          title="Open SOS Beacon Command & Live Capacity Control"
-        >
-          🚨 Beacons {beaconCount > 0 ? `(${beaconCount})` : ''}
-        </button>
         <div className="layout-btns" role="group" aria-label="Show or hide panels">
           <button className={`theme-btn ${panels?.left ? 'on' : ''}`} onClick={() => onPanel('left')}
             aria-pressed={!!panels?.left} title={`${panels?.left ? 'Hide' : 'Show'} incidents list (Ctrl+B)`}>{ICON_LEFT(panels?.left)}</button>

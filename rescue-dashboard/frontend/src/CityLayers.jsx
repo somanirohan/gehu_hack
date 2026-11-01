@@ -69,56 +69,7 @@ export default function CityLayers({
         </CircleMarker>
       ))}
 
-      {showShelters && shelters.filter((s) => (s.status || '').toUpperCase() !== 'CLOSED').map((s) => {
-        if (isBeacon(s)) {
-          return (
-            <Marker
-              key={`beacon-${s.id}-${s.status}-${s.capacity}`}
-              position={[s.lat, s.lon]}
-              icon={beaconIcon(s)}
-              zIndexOffset={3000}
-              eventHandlers={{
-                click: () => onManageBeacon(s.id),
-              }}
-            >
-              <Tooltip permanent direction="top" offset={[0, -26]} className="beacon-map-label">
-                🚨 {s.name} · 👥 {s.capacity != null ? s.capacity : '—'}
-              </Tooltip>
-              <Popup>
-                <div className="beacon-popup">
-                  <div className="beacon-popup-head">
-                    <span className="beacon-badge">🚨 SOS Beacon</span>
-                    <span className={`beacon-status-pill ${(s.status || 'open').toLowerCase()}`}>
-                      {s.status || 'OPEN'}
-                    </span>
-                  </div>
-                  <strong style={{ fontSize: '15px' }}>{s.name}</strong>
-                  <div className="beacon-cap-box">
-                    <span>Live Shelter Capacity:</span>
-                    <span className="beacon-cap-val">👥 {s.capacity ?? '—'} people</span>
-                  </div>
-                  {s.note && (
-                    <div style={{ margin: '6px 0', fontSize: '12px', background: 'var(--sage)', padding: '4px 8px', borderRadius: '4px' }}>
-                      <strong>Situation Note:</strong> {s.note}
-                    </div>
-                  )}
-                  <div className="muted" style={{ fontSize: '11px', marginTop: '4px' }}>
-                    Origin: {s.origin || 'Field node'} · Version {s.version || 1}
-                  </div>
-                  <div style={{ marginTop: '8px' }}>
-                    <button
-                      type="button"
-                      className="popup-beacon-btn"
-                      onClick={() => onManageBeacon(s.id)}
-                    >
-                      🎛️ Control Beacon & Update Capacity
-                    </button>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          )
-        }
+      {showShelters && shelters.filter((s) => (s.status || '').toUpperCase() !== 'CLOSED' && !isBeacon(s)).map((s) => {
 
         return (
           <CircleMarker key={`sh-${s.id}-${s.status}`} center={[s.lat, s.lon]} radius={9}
