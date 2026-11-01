@@ -235,7 +235,6 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
         <div>
           <div className="brand-name">RESQ <span className="brand-city">Dehradun Disaster Control Room</span></div>
           <div className="brand-sub">
-            <span className={`chip ${live ? 'ok' : 'off'}`}><span className={`dot ${live ? 'ok' : 'off'}`} />{live ? 'Live' : 'Reconnecting…'}</span>
             {verify != null && (
               <span className={`chip ${verify.ok ? '' : 'bad'}`}>
                 {verify.ok ? `Log intact · ${verify.entries}` : `Log tampered at #${verify.broken_at.join(', #')}`}
