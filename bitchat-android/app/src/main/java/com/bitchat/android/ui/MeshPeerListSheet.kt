@@ -91,7 +91,9 @@ fun MeshPeerListSheet(
     onOpenGuide: () -> Unit = {},
     onOpenShelters: () -> Unit = {},
     onOpenAiChatbot: () -> Unit = {},
+    onOpenBeaconControl: () -> Unit = {},
     modifier: Modifier = Modifier
+
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
@@ -252,7 +254,22 @@ fun MeshPeerListSheet(
                                             onOpenShelters()
                                         }
                                     )
+                                    SheetCardDivider()
+                                    val myBeacons = viewModel.shelters.collectAsStateWithLifecycle().value.map { it.shelter }.filter { it.originPeerID == viewModel.myPeerID() && it.status != com.bitchat.android.model.ShelterStatus.CLOSED }
+                                    SidebarToolRow(
+                                        title = "SOS Beacon Control",
+                                        subtitle = "Live capacity controller & emergency beacon",
+                                        leadingIcon = {
+                                            Text("🚨", fontSize = 16.sp)
+                                        },
+                                        badgeText = if (myBeacons.isNotEmpty()) "${myBeacons.first().capacity} cap" else null,
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenBeaconControl()
+                                        }
+                                    )
                                 }
+
                             }
                         }
                     }

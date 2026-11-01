@@ -12,7 +12,8 @@ import { api, liveUpdates } from './api.js'
 
 import LiveLayers, { liveApi } from './LiveLayers'
 import FeedPanel from './FeedPanel'
-import CityLayers from './CityLayers'
+import CityLayers, { isBeacon } from './CityLayers'
+import BeaconControl from './BeaconControl'
 import PlannerPanel from './PlannerPanel'
 import CommanderPanel from './CommanderPanel'
 import RouteAlerts from './RouteAlerts'
@@ -211,7 +212,7 @@ const MOON = <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke=
 const ICON_LEFT = (on) => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="3" y="4" width="6.5" height="16" rx="2" fill={on ? 'currentColor' : 'none'} /></svg>
 const ICON_RIGHT = (on) => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="14.5" y="4" width="6.5" height="16" rx="2" fill={on ? 'currentColor' : 'none'} /></svg>
 
-function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPresent, present, theme, onTheme, panels, onPanel }) {
+function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPresent, present, theme, onTheme, panels, onPanel, beaconCount = 0, onOpenBeacons = () => {} }) {
   if (!stats) return null
   const open = incidents.filter((i) => i.status !== 'resolved')
   const lives = open.reduce((n, i) => n + (i.people || 1), 0)
@@ -241,6 +242,17 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
               </span>
             )}
             <span className="chip">{syncText(sync)}</span>
+            {beaconCount > 0 && (
+              <button
+                type="button"
+                className="chip hot"
+                style={{ cursor: 'pointer', border: '1px solid var(--crit)', background: 'var(--crit-tint)', color: 'var(--crit-ink)', fontWeight: 700 }}
+                onClick={onOpenBeacons}
+                title="View active SOS Beacons & Live Capacities"
+              >
+                🚨 {beaconCount} Active Beacon{beaconCount > 1 ? 's' : ''}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -255,6 +267,15 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
       </div>
 
       <div className="nav-actions">
+        <button
+          type="button"
+          className="theme-btn"
+          style={{ width: 'auto', padding: '0 10px', fontSize: '12px', fontWeight: 650, display: 'flex', alignItems: 'center', gap: '5px' }}
+          onClick={onOpenBeacons}
+          title="Open SOS Beacon Command & Live Capacity Control"
+        >
+          🚨 Beacons {beaconCount > 0 ? `(${beaconCount})` : ''}
+        </button>
         <div className="layout-btns" role="group" aria-label="Show or hide panels">
           <button className={`theme-btn ${panels?.left ? 'on' : ''}`} onClick={() => onPanel('left')}
             aria-pressed={!!panels?.left} title={`${panels?.left ? 'Hide' : 'Show'} incidents list (Ctrl+B)`}>{ICON_LEFT(panels?.left)}</button>
@@ -271,6 +292,7 @@ function Stats({ stats, live, verify, sync, incidents = [], aiCount = 0, onPrese
     </header>
   )
 }
+
 
 function Queue({
   incidents,
@@ -765,9 +787,12 @@ export default function App() {
   const photoHazards = usePhotoHazards(tick)
   const [places, setPlaces] = useState({ center: null, places: [] })
   const [shelters, setShelters] = useState([])
+  const [selectedBeaconId, setSelectedBeaconId] = useState(null)
+  const [customFlyTarget, setCustomFlyTarget] = useState(null)
   const [sync, setSync] = useState(null)
   const [toast, setToast] = useState(null)
   const [layers, setLayers] = useState({ risk: true, shelters: true, routes: true, names: true, labels: true })
+
   const [pickMode, setPickMode] = useState(null)  // 'block' | 'photo:<id>'
   const [selectedRoute, setSelectedRoute] = useState(null)  // assignment id of the route clicked on the map
   const [liveUnits, setLiveUnits] = useState([])
@@ -887,11 +912,19 @@ export default function App() {
       if (msg?.event === 'agent_step') {
         setAgentSteps((s) => (s.length && s[0].run_id !== msg.data.run_id ? [msg.data] : [...s, msg.data]))
       }
-      if (msg?.event === 'shelters') api.shelters().then(setShelters).catch(() => {})
+      if (msg?.event === 'shelters' || msg?.event === 'beacon_updated') {
+        api.shelters().then(setShelters).catch(() => {})
+        if (msg?.event === 'beacon_updated' && msg.data?.name) {
+          const capText = msg.data.capacity != null ? ` · Live Capacity: ${msg.data.capacity}` : ''
+          setToast({ kind: 'beacon', text: `🚨 SOS Beacon: ${msg.data.name}${capText}`, at: Date.now() })
+          beep()
+        }
+      }
       if (msg?.event === 'photo_hazard' && msg.data?.status === 'pending') {
         setToast({ kind: 'photo', text: `Photo shows: ${msg.data.label}. Add a road blockage there?`, at: Date.now() })
         beep()
       }
+
     }
     const stop = liveUpdates(onMessage, setLive)
     const timer = setInterval(() => { refresh(); setTick((t) => t + 1) }, 15000)
@@ -1081,8 +1114,8 @@ export default function App() {
   }
 
   const flyTarget = useMemo(
-    () => incidents.find((incident) => incident.id === selectedId) || null,
-    [incidents, selectedId],
+    () => customFlyTarget || incidents.find((incident) => incident.id === selectedId) || null,
+    [customFlyTarget, incidents, selectedId],
   )
 
   const simResponder = simulation
@@ -1108,7 +1141,17 @@ export default function App() {
     <div className={`app ${present ? 'presenting' : ''}`}>
       <Stats stats={stats} live={live} verify={verify} sync={sync} incidents={incidents}
         aiCount={agentItems.length} onPresent={togglePresent} present={present}
-        theme={theme} onTheme={toggleTheme} panels={panels} onPanel={togglePanel} />
+        theme={theme} onTheme={toggleTheme} panels={panels} onPanel={togglePanel}
+        beaconCount={shelters.filter((s) => isBeacon(s) && (s.status || '').toUpperCase() !== 'CLOSED').length}
+        onOpenBeacons={() => {
+          setSideTab('beacons')
+          if (!panels.right) togglePanel('right')
+          const activeB = shelters.find((s) => isBeacon(s) && (s.status || '').toUpperCase() !== 'CLOSED') || shelters.find(isBeacon)
+          if (activeB) {
+            setSelectedBeaconId(activeB.id)
+            setCustomFlyTarget({ lat: activeB.lat, lon: activeB.lon, id: `beacon-${activeB.id}-${Date.now()}` })
+          }
+        }} />
 
       {error && (
         <div className="error" role="alert">
@@ -1146,7 +1189,8 @@ export default function App() {
             <FlyTo target={flyTarget} />
             <MapResizer dep={`${present}-${panels.left}-${panels.right}`} />
 
-            <CityLayers places={places.places} shelters={shelters} showRisk={layers.risk} showShelters={layers.shelters} />
+            <CityLayers places={places.places} shelters={shelters} showRisk={layers.risk} showShelters={layers.shelters}
+              onManageBeacon={(id) => { setSelectedBeaconId(id); setSideTab('beacons'); if (!panels.right) togglePanel('right') }} />
             <LiveLayers tick={tick} officer={officer} pickMode={pickMode} onPick={onPick} showUnits={false} showRoutes={layers.routes}
               selectedRoute={selectedRoute} onSelectRoute={selectRoute} onUnits={setLiveUnits} />
 
@@ -1235,12 +1279,13 @@ export default function App() {
                 <option value="clean">Clean (light)</option>
               </select>
             </label>
-            {[['names', 'Street names'], ['labels', 'Unit & incident labels'], ['risk', 'Risk spots'], ['shelters', 'Shelters'], ['routes', 'Unit routes']].map(([k, label]) => (
+            {[['names', 'Street names'], ['labels', 'Unit & incident labels'], ['risk', 'Risk spots'], ['shelters', 'Shelters & SOS Beacons'], ['routes', 'Unit routes']].map(([k, label]) => (
               <label key={k}>
                 <input type="checkbox" checked={layers[k]} onChange={() => setLayers((l) => ({ ...l, [k]: !l[k] }))} />
                 {label}
               </label>
             ))}
+
             </>}
           </div>
 
@@ -1309,14 +1354,32 @@ export default function App() {
           </label>
 
           <div className="seg sidetabs" role="tablist">
-            {[['incident', 'Incident'], ['planner', 'AI Planner'], ['ask', 'Ask AI'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
+            {[['incident', 'Incident'], ['beacons', 'SOS Beacons'], ['planner', 'AI Planner'], ['ask', 'Ask AI'], ['feed', 'Live feed'], ['log', 'Action log']].map(([k, label]) => (
               <button key={k} className={sideTab === k ? 'on' : ''} onClick={() => { setSideTab(k); setSelectedRoute(null) }}>{label}</button>
             ))}
           </div>
 
+          {sideTab === 'beacons' && (
+            <BeaconControl
+              officer={officer}
+              shelters={shelters}
+              selectedBeaconId={selectedBeaconId}
+              onUpdate={() => {
+                refresh()
+                api.shelters().then(setShelters).catch(() => {})
+                setTick((t) => t + 1)
+              }}
+              onFlyTo={([lat, lon]) => {
+                setSelectedId(null)
+                setCustomFlyTarget({ lat, lon, id: `beacon-${lat}-${lon}-${Date.now()}` })
+              }}
+            />
+          )}
+
           {sideTab === 'incident' && incidents.find((i) => i.id === selectedId)?.drill && (
             <div className="drill-banner">DRILL: practice data from the drill script, not a real call</div>
           )}
+
 
           {sideTab === 'incident' && <Detail
             incident={selected}

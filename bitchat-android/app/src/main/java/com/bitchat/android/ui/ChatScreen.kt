@@ -99,7 +99,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var showMapPage by remember { mutableStateOf(false) }
     var showSurvivalGuide by remember { mutableStateOf(false) }
     var showAiChatbot by remember { mutableStateOf(false) }
+    var showBeaconControlSheet by remember { mutableStateOf(false) }
     var showUserSheet by remember { mutableStateOf(false) }
+
     var selectedUserForSheet by remember { mutableStateOf("") }
     var selectedMessageForSheet by remember { mutableStateOf<BitchatMessage?>(null) }
     var showFullScreenImageViewer by remember { mutableStateOf(false) }
@@ -599,6 +601,7 @@ if (isMeshTimeline) {
         onOpenGuide = { showSurvivalGuide = true },
         onOpenShelters = { showShelterSheet = true },
         onOpenAiChatbot = { showAiChatbot = true },
+        onOpenBeaconControl = { showBeaconControlSheet = true },
     )
 
     ShelterSheet(
@@ -613,8 +616,30 @@ if (isMeshTimeline) {
             showShelterSheet = false
             showMapPage = true
         },
+        onOpenBeaconControl = {
+            showShelterSheet = false
+            showBeaconControlSheet = true
+        },
         onDismiss = { showShelterSheet = false }
     )
+
+
+    BeaconControlSheet(
+        isPresented = showBeaconControlSheet,
+        shelters = viewModel.shelters.value,
+        myPeerID = viewModel.myPeerID(),
+        onUpdateCapacity = { id, cap, st ->
+            viewModel.updateShelterCapacity(id, cap, st)
+        },
+        onPublishNewBeacon = { name, lat, lon, cap, role, status ->
+            viewModel.publishShelter(name, lat, lon, cap, role, status)
+        },
+        onDeleteBeacon = { shelter ->
+            viewModel.deleteShelter(shelter)
+        },
+        onDismiss = { showBeaconControlSheet = false }
+    )
+
     if (showMapPage) {
         val shelters = viewModel.shelters.value
         val publicMsgs = viewModel.publicMessages.value
@@ -958,7 +983,9 @@ private fun ChatDialogs(
     onOpenGuide: () -> Unit = {},
     onOpenShelters: () -> Unit = {},
     onOpenAiChatbot: () -> Unit = {},
+    onOpenBeaconControl: () -> Unit = {},
 ) {
+
     val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
 
     // Password dialog
@@ -1044,9 +1071,11 @@ private fun ChatDialogs(
             onOpenMap = onOpenMap,
             onOpenGuide = onOpenGuide,
             onOpenShelters = onOpenShelters,
-            onOpenAiChatbot = onOpenAiChatbot
+            onOpenAiChatbot = onOpenAiChatbot,
+            onOpenBeaconControl = onOpenBeaconControl
         )
     }
+
 
     if (showVerificationSheet) {
         VerificationSheet(

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -70,8 +71,10 @@ fun ShelterSheet(
     onDeleteShelter: (Shelter) -> Unit,
     onPublish: (name: String, lat: Double, lon: Double, capacity: Int, role: Role, status: ShelterStatus) -> Unit,
     onOpenMap: () -> Unit,
+    onOpenBeaconControl: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+
     if (!isPresented) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -282,8 +285,15 @@ fun ShelterSheet(
                     enabled = lat.isNotBlank() && lon.isNotBlank()
                 ) { Text(if (isResponder) stringResource(R.string.shelter_publish_gossip) else stringResource(R.string.shelter_send_sos_beacon)) }
                 Button(onClick = onOpenMap) { Text(stringResource(R.string.shelter_open_map)) }
+                OutlinedButton(onClick = {
+                    onDismiss()
+                    onOpenBeaconControl()
+                }) {
+                    Text("🚨 Beacon Control")
+                }
             }
             Spacer(Modifier.height(16.dp))
+
         }
     }
 }

@@ -24,10 +24,16 @@ export const api = {
   resuggest: (id) => call(`/api/incidents/${id}/suggest`, { method: 'POST' }),
   places: () => call('/api/v1/places'),
   shelters: () => call('/api/v1/shelters'),
+  beacons: () => call('/api/v1/beacons'),
+  beacon: (id) => call(`/api/v1/beacons/${id}`),
+  createBeacon: (data) => call('/api/v1/beacons', { method: 'POST', body: JSON.stringify(data) }),
+  updateBeacon: (id, data) => call(`/api/v1/beacons/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  closeBeacon: (id, token) => call(`/api/v1/beacons/${id}?creator_token=${encodeURIComponent(token || '')}`, { method: 'DELETE' }),
   syncStatus: () => call('/api/v1/bitchat/sync-status'),
   status: (id, status, actor) =>
     call(`/api/incidents/${id}/status`, { method: 'POST', body: JSON.stringify({ status, actor }) }),
 }
+
 
 // Opens the live-update socket and reconnects if it drops.
 export function liveUpdates(onChange, onState) {

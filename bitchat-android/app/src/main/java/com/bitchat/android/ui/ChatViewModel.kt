@@ -440,6 +440,37 @@ class ChatViewModel(
     }
 
     /**
+     * Update live capacity and operational status for an active beacon/shelter authored by this device.
+     * Gossips to the mesh and triggers a sync flush to update the admin COP map.
+     */
+    fun updateShelterCapacity(
+        shelterId: String,
+        newCapacity: Int,
+        newStatus: com.bitchat.android.model.ShelterStatus? = null
+    ): Boolean {
+        return try {
+            val registry = com.bitchat.android.services.ShelterRegistry.getInstance(getApplication())
+            val existing = registry.snapshot().firstOrNull { it.id == shelterId } ?: return false
+            if (existing.originPeerID != mesh.myPeerID) return false
+            val updated = existing.copy(
+                capacity = newCapacity.coerceAtLeast(0),
+                status = newStatus ?: existing.status,
+                version = System.currentTimeMillis()
+            )
+            registry.ingest(updated)
+            com.bitchat.android.services.AppStateStore.recordShelter(updated, verified = false)
+            mesh.broadcastShelter(updated)
+            com.bitchat.android.util.SyncWorkScheduler.scheduleFlush(getApplication())
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun myPeerID(): String = mesh.myPeerID
+
+
+    /**
      * Send an SOS broadcast that auto-attaches the sender's current GPS location so the
      * message renders as a 🆘 incident marker on the COP map. Category is forced to CIVILIAN
      * so subscribed responders pick it up.
@@ -454,6 +485,20 @@ class ChatViewModel(
             // Force category = CIVILIAN so subscribed responders pick it up regardless of the
             // sender's normal role.
             sendMessage(body, onAccepted, categoryOverride = com.bitchat.android.model.Role.CIVILIAN)
+
+            coords?.let { (lat, lon) ->
+                try {
+                    publishShelter(
+                        name = "SOS: $trimmed".take(40),
+                        lat = lat,
+                        lon = lon,
+                        capacity = 50,
+                        role = com.bitchat.android.model.Role.CIVILIAN,
+                        status = com.bitchat.android.model.ShelterStatus.OPEN
+                    )
+                    com.bitchat.android.util.SyncWorkScheduler.scheduleFlush(getApplication())
+                } catch (_: Exception) {}
+            }
         }
     }
 
