@@ -1,282 +1,450 @@
-# 🚨 ResQMesh
-### Offline-First Mesh Network & Tactical Disaster Response Ecosystem
-> **Developed for GEHU Hackathon 2026** | Focused on Resilient Disaster Management for Dehradun & Himalayan Terrains
+# RESQ · Dehradun Disaster Control Room
 
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLite-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/Frontend-React%20%2B%20Leaflet%20%2B%20Vite-61DAFB?logo=react)](https://react.dev/)
-[![Android](https://img.shields.io/badge/Mobile-Android%20%2B%20Kotlin%20%2B%20BLE%20Mesh-3DDC84?logo=android)](https://developer.android.com/)
-[![Offline Routing](https://img.shields.io/badge/GIS%20Routing-OSMnx%20%2B%20NetworkX-00599C)](https://osmnx.readthedocs.io/)
-[![AI Triage](https://img.shields.io/badge/Incident%20Triage-Groq%20AI%20Assisted-F55036)](https://groq.com/)
+**Offline SOS over a phone mesh → AI-assisted control room → live tasks and re-routing on responder phones.**
+
+When a cloudburst, flash flood or landslide hits Dehradun, mobile networks are often the first thing to fail.
+RESQ keeps the chain from *"someone needs help"* to *"a unit is on the way"* working anyway:
+
+1. **Citizens send an SOS with no internet** (text, photo or voice note) over a Bluetooth / Wi-Fi mesh of phones.
+2. **Any phone that finds internet uploads everyone's messages** to the control room.
+3. **Five AI agents** read, verify, prioritise and plan. **An officer approves**; nothing moves without a human.
+4. **The responder's phone gets the task and a real road route**, and is **re-routed live** when a road is reported blocked.
+
+---
+LIGHT MODE
+<img width="1341" height="785" alt="WhatsApp Image 2026-11-01 at 12 19 52 PM" src="https://github.com/user-attachments/assets/a69b96de-3790-4d52-8c85-91cef06a0ac3" />
+DARK MODE
+<img width="1337" height="786" alt="WhatsApp Image 2026-11-01 at 12 20 08 PM" src="https://github.com/user-attachments/assets/46fff8eb-e579-43f0-ba8b-bb0d7af67bb9" />
+
+LIVE URL https://passengers-snake-democratic-preceding.trycloudflare.com/
+Why the link may be offline: RESQ is built offline-first. The control-room server runs on our own machine, as it would at the district Emergency Operations Centre, not on a cloud service that fails when the internet does. The public link is a free secure tunnel to that machine, so it works only while our control-room laptop is switched on, and the address changes each time the tunnel restarts. During judging it is live. At any other time, run it yourself in about 15 minutes with the steps in Run it.
+
+
+## Live demo
+
+| | Link |
+|---|---|
+| Control-room dashboard | https://necessarily-brief-forgotten-devel.trycloudflare.com |
+| Responder app (open on a phone) | https://necessarily-brief-forgotten-devel.trycloudflare.com/responder/ |
+
+> **Why the link may be offline:** RESQ is built **offline-first**. The control-room server runs on our own
+> machine, as it would at the district Emergency Operations Centre, not on a cloud service that fails when the
+> internet does. The public link is a free secure tunnel to that machine, so **it works only while our
+> control-room laptop is switched on**, and the address changes each time the tunnel restarts.
+> During judging it is live. At any other time, run it yourself in about 15 minutes with the steps in [Run it](#run-it).
 
 ---
 
-## 📌 Executive Summary
+## Contents
 
-During severe natural disasters in mountainous terrains—such as **cloudbursts, landslides, flash floods, and seismic events common in Uttarakhand and Dehradun**—critical communication infrastructure collapses:
-- ❌ **Cellular towers go offline** and fiber-optic cables snap, isolating civilian populations.
-- ❌ **Control rooms operate blind**, receiving stale, unverified, or duplicate emergency reports.
-- ❌ **Emergency shelters quickly overflow or run dry**, with zero live visibility into remaining capacity.
-- ❌ **First responders encounter flooded or blocked roads**, leading to critical dispatch delays.
-
-**ResQMesh** is a fully integrated, zero-infrastructure disaster response ecosystem that bridges the gap between stranded civilians and tactical rescue commanders through:
-1. **Zero-Infrastructure Bluetooth Low Energy (BLE) Mesh Networking** running on everyday Android smartphones.
-2. **Dynamic Civilian SOS Beacons with Real-Time Capacity Management** and cryptographic creator ownership.
-3. **Common Operating Picture (COP) Tactical Rescue Dashboard** with live radar beacon indicators and real-time capacity badges.
-4. **Offline Road Graph & Hazard-Avoiding Routing Engine** powered by OSMnx for Dehradun road networks.
-5. **AI-Assisted Emergency Triage & Nearest-Unit Recommendation** for prioritized human-in-the-loop dispatch.
+- [Live demo](#live-demo)
+- [The problem](#the-problem)
+- [How RESQ works](#how-resq-works)
+- [What is in this repository](#what-is-in-this-repository)
+- [Key features](#key-features)
+- [The five AI agents](#the-five-ai-agents)
+- [How priority is decided](#how-priority-is-decided)
+- [Trust and safety design](#trust-and-safety-design)
+- [Before vs after](#before-vs-after)
+- [Architecture and data](#architecture-and-data)
+- [Tech stack](#tech-stack)
+- [Run it](#run-it)
+- [3-minute demo for judges](#3-minute-demo-for-judges)
+- [Testing](#testing)
+- [Honest limits and next steps](#honest-limits-and-next-steps)
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## The problem
+
+| What goes wrong in a Himalayan disaster | Why it matters |
+|---|---|
+| Mobile towers and internet go down first | Victims cannot call 112 or post on social media |
+| Reports arrive late, duplicated or in Hindi / Hinglish / local languages | Control rooms waste minutes reading, merging and translating |
+| Some reports are false or are practice messages | Scarce boats and rescue teams get sent to the wrong place |
+| Roads get blocked by landslides and fallen trees while units are driving | Ambulances reach a dead end and lose critical time |
+| Officers juggle maps, phone calls and registers | No single live picture, and no record of who decided what |
+
+Dehradun district has known flood-prone spots (Sahastradhara, Tapkeshwar, IT Park area) and accident-prone
+stretches. RESQ loads these as map layers, each with its news or police source.
+
+---
+
+## How RESQ works
 
 ```mermaid
-flowchart TB
-    subgraph OfflineField ["📍 The Disaster Field (100% Offline / Zero Cellular)"]
-        A1["📱 Citizen / Victim Phone<br/>(BitChat Android BLE Mesh)"]
-        A2["📱 Civilian Shelter Host<br/>(Live Capacity Controller)"]
-        A3["📱 Mesh Relay Nodes<br/>(Hop-by-Hop Gossip Routing)"]
-        
-        A1 -- "SOS Beacon / Distress Chat" --> A3
-        A2 -- "Capacity Update (+/-10, +/-1, Open/Full)" --> A3
-        A3 -- "Store-and-Forward Mesh Bundles" --> A4["📡 Edge Gateway / Mesh Node<br/>(Satellite, Local Wi-Fi, or Bridge)"]
+flowchart LR
+    subgraph Field["Field: no internet needed"]
+        C1["Citizen phone<br/>bitchat app"]
+        C2["Citizen phone"]
+        C3["Phone that finds<br/>internet = gateway"]
+        C1 -- "Bluetooth / Wi-Fi mesh" --> C2
+        C2 -- "mesh hop" --> C3
     end
 
-    subgraph BackendCore ["⚙️ Rescue Tactical Core (FastAPI + Bridge Engine)"]
-        A4 -- "POST /api/v1/bitchat/civ-sync" --> S1["🚀 Disaster Bridge & Ingestion Engine<br/>(Duplicate Filter, Priority Scorer, AI Triage)"]
-        S1 <--> DB[("🗄️ Thread-Safe SQLite Store<br/>(Shelters, Beacons, Responders, Routes, Logs)")]
-        
-        S1 --> S2["🗺️ Offline Road Routing Engine<br/>(OSMnx Dehradun Graph + Blockage Avoidance)"]
-        S1 --> S3["📡 Real-Time WebSocket Broadcaster<br/>(Live Beacon State, Capacity & Incident Pushes)"]
+    subgraph CR["Control room server (FastAPI + SQLite)"]
+        B["Bridge<br/>dedupe + merge"]
+        AI["AI agents<br/>Triage · Verifier · Planner<br/>Route Watch · Commander"]
+        R["Road router<br/>real Dehradun roads"]
+        DB[("SQLite +<br/>hash-chained log")]
+        WS["Live hub<br/>WebSocket"]
+        B --> AI --> R
+        B --> DB
+        AI --> DB
+        AI --> WS
     end
 
-    subgraph OperationsRoom ["🖥️ Rescue Command & Field Operation"]
-        S3 -- "ws:// live feed" --> UI1["🗺️ Tactical COP Admin Dashboard<br/>(React + Leaflet GIS Map + Beacon Studio)"]
-        S2 -- "Dynamic Turn-by-Turn Route" --> UI2["🚑 First Responder Tactical Web App<br/>(SDRF, NDRF, Ambulance, Police, Fire)"]
-        UI1 -- "Officer Approval / Road Blockage Tagging" --> S1
-    end
+    D["Dashboard<br/>officer approves"]
+    U["Responder phone<br/>ambulance · SDRF · boat<br/>fire · drone · police"]
+
+    C3 -- "HTTPS sync<br/>text · photo · voice" --> B
+    WS <-- "live incidents · approvals" --> D
+    WS <-- "task · route · GPS · status" --> U
 ```
 
----
-
-## 🚨 Live SOS Beacon & Dynamic Capacity Feedback Loop
-
-When emergency shelters open or disaster victims deploy an emergency marker, resource exhaustion is the #1 danger. ResQMesh features an active **Dynamic SOS Beacon & Live Capacity Studio**:
+### The life of one SOS
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Creator as Civilian Shelter Host / Victim
-    participant Phone as BitChat Android App
-    participant Mesh as Bluetooth Mesh Network
-    participant Bridge as Tactical Bridge (FastAPI)
-    participant Dashboard as Admin COP Map (React)
-    actor Responder as SDRF / Rescue Teams
+    participant V as Victim (offline)
+    participant M as Mesh phones
+    participant S as Control room server
+    participant A as AI agents
+    participant O as Officer (dashboard)
+    participant R as Responder phone
 
-    Creator->>Phone: Launch SOS Beacon (Set Name, GPS, Live Capacity: 40)
-    Note over Phone: Signs payload with creator token / originPeerID
-    Phone->>Mesh: Broadcast Beacon Advertisement via BLE Gossip
-    Mesh->>Bridge: Ingested via civ-sync upload
-    Bridge->>Dashboard: WebSocket Push: `beacon_updated`
-    Note over Dashboard: Map renders glowing radar pulse with Live Badge: 👥 40
-    
-    rect rgb(240, 248, 255)
-        Note over Creator, Dashboard: 🔄 Dynamic Capacity Modification
-        Creator->>Phone: Update Capacity (-10 arrivals -> 30 capacity left)
-        Phone->>Mesh: Gossip incremental update with creator token
-        Mesh->>Bridge: Synchronized to Bridge
-        Bridge->>Dashboard: Instant badge update to 👥 30 (Status: OPEN)
-    end
-
-    rect rgb(255, 240, 245)
-        Note over Creator, Dashboard: ⛔ Overcrowding Event
-        Creator->>Phone: Capacity reaches 0 -> Mark Status: FULL
-        Phone->>Mesh: Broadcast FULL status
-        Bridge->>Dashboard: Marker turns Orange/Crimson; Alert issued
-        Dashboard->>Responder: Auto-diverts incoming evacuees to adjacent open shelters
-    end
+    V->>M: "2 bacche aur meri maa andar fase hai" + GPS
+    M->>M: hops phone to phone over Bluetooth / Wi-Fi
+    M->>S: first phone with internet uploads everyone's messages
+    S->>S: ignore repeats, merge reports from the same spot
+    S->>A: Triage reads Hinglish: trapped, 3 people, child + elderly, critical
+    A->>A: Verifier checks evidence: senders, location, test words
+    A-->>O: incident with priority score + reasons, unit suggested
+    O->>S: Approve dispatch (or run the AI Dispatch Planner)
+    S->>R: task, people, original message, road route, ETA
+    R->>S: "On the way" + live GPS
+    Note over S,R: a citizen reports a landslide on the route
+    S->>A: Route Watch: is it on this unit's road ahead?
+    A-->>R: new route + reason (short detour auto, long detour asks officer)
+    R->>S: "Reached", then "Done", unit is free again
 ```
 
 ---
 
-## 🌟 Key Innovations & Judge Highlights
+## What is in this repository
 
-### 📡 1. True Zero-Infrastructure Mesh Networking (BitChat Android)
-- **100% Off-Grid Communication**: Operates entirely over Bluetooth Low Energy (BLE) peer-to-peer mesh. No cellular signal, SIM card, or Wi-Fi router required.
-- **Store-and-Forward Gossip Protocol**: Messages and SOS distress beacons hop from smartphone to smartphone across the disaster perimeter.
-- **Civilization Sync (`civ-sync`)**: As soon as any single handset touches an edge connectivity node (satellite truck, base camp Wi-Fi, rescue drone), it automatically flushes all accumulated mesh bundles to the command backend.
+| Folder | What it is |
+|---|---|
+| [`bitchat-android/`](bitchat-android) | The citizen and field app. Based on the open-source **bitchat** mesh messenger, with our disaster features added (below). |
+| [`rescue-dashboard/backend/`](rescue-dashboard/backend) | FastAPI server: bridge, priority rules, road routing, the AI agents, voice/photo AI, responder API, tamper-evident log. |
+| [`rescue-dashboard/frontend/`](rescue-dashboard/frontend) | Control-room dashboard (React + Leaflet). |
+| [`rescue-dashboard/responder/`](rescue-dashboard/responder) | Responder phone web app (installable, live GPS). |
+| [`rescue-dashboard/simulator/`](rescue-dashboard/simulator) | Dehradun drill: realistic Hinglish SOS at real places, always labelled **DRILL**. |
+| [`rescue-dashboard/tools/`](rescue-dashboard/tools) | Build the Dehradun road graph, fix place positions, edge-to-cloud sync. |
 
-### 🚨 2. Dynamic SOS Beacons & Creator-Authenticated Control Page
-- **Concentric Radar Map Visualization**: SOS beacons appear on the admin COP map with animated dual-ring radar pulses (`beacon-pulse-ring`) and high-visibility live capacity badges (`👥 <capacity>`).
-- **Creator Ownership Token**: When deploying a beacon via browser or mobile app, a cryptographic token (`creator_token` / `originPeerID`) is issued. Only the author can modify its capacity or status, preventing bad actors from falsifying emergency shelter capacity.
-- **Real-Time Control Studio**: Features a dedicated control panel with tactile steppers (`-10`, `-1`, `+1`, `+10`), direct capacity sliders, status toggles (`OPEN`, `FULL`, `CLOSED`), emergency notes, and one-tap stand-down/deactivation.
-
-### 🗺️ 3. Tactical COP Command Room & Real-Time GIS Map
-- **Common Operating Picture (COP)**: Aggregates civilian SOS reports, active shelters, emergency resources, and responder units into a single live geospatial dashboard.
-- **Instant WebSocket Synchronization**: Any new beacon, capacity edit, or incident status change reflects instantly across all open command terminals without full-page reloads.
-- **Tamper-Evident Action Logging**: Every dispatch, triage update, and shelter modification is recorded with strict timestamps for full post-incident auditability.
-
-### 🛣️ 4. Offline Road Graph & Hazard-Avoiding Routing Engine
-- **Pre-Compiled Dehradun Road Graph (`roads_dehradun.graphml`)**: Powered by OSMnx and NetworkX. Computes accurate topological road routes without depending on Google Maps or online cloud APIs.
-- **Dynamic Road Blockage Avoidance**: Command officers can tag collapsed bridges or flooded roads; the routing engine automatically recomputes optimal routes for ambulances, SDRF, and fire tenders.
-
-### 🧠 5. Automated AI Incident Triage & Smart Dispatch
-- **AI Triage Engine (Groq AI)**: Analyzes unstructured distress text, determines urgency levels (Critical, Moderate, Low), and extracts casualty counts and critical needs (medical, food, rescue).
-- **Nearest Unit Recommendation**: Proposes the closest available SDRF, ambulance, or police unit to the command officer, ensuring fast and coordinated response while keeping humans in the loop.
+> The `ai-surveillance/` folder is a separate module and is not covered by this README.
 
 ---
 
-## 🛠️ Complete Tech Stack Matrix
+## Key features
 
-| Subsystem | Core Technologies | Purpose & Architecture Role |
-| :--- | :--- | :--- |
-| **Mobile Mesh** | Android SDK 34, Kotlin, Jetpack Compose, BLE GATT | Peer-to-peer decentralized mesh communications, SOS beacon generation & live control sheet |
-| **Command Backend** | FastAPI, Uvicorn, Python 3.10+, SQLite3 | High-throughput async REST API, WebSocket pub/sub broadcaster, tamper-evident audit logging |
-| **Tactical Dashboard** | React 19, Leaflet, Vite, Vanilla CSS Design System | Common Operating Picture (COP) map, pulsing beacon radar markers, capacity stepper studio |
-| **Offline Routing** | OSMnx 2.0, NetworkX, Shapely, GeoPandas | Graph-theoretic road routing for emergency vehicles avoiding blocked corridors without internet |
-| **AI Incident Triage** | Groq API / Fallback Rules, Pydantic, Python | Urgency ranking, duplicate report grouping, and nearest rescue unit recommendations |
-| **Responder Portal** | Mobile-optimized React web app | Field responder mission assignment, turn-by-turn routing, and live status reporting |
+### 1. Works when the network is down (the bitchat app)
+Added to bitchat for disaster use:
+- **Roles on every message**: Civilian, Ambulance, Fire, Government, Admin, Shelter, Drone, Rescue, with a role filter.
+- **Geo-tagged SOS** and an **offline map** (OpenStreetMap with cached tiles) showing incidents, shelters and nearby mesh peers by role.
+- **Shelter registry** shared across the mesh (versioned, verified by officials, stored encrypted on the phone).
+- **Delivery acknowledgements** routed back along the mesh path, so a sender knows the message travelled.
+- **Automatic sync**: whenever a phone gets *validated* internet, it uploads every geo-tagged message, photo and voice note it has seen. **Every online phone is a gateway for the offline phones around it.**
+- **Offline Disaster Survival Guide** (earthquake, landslide, flash flood, fire, trauma first aid, rescue signalling), translated into Hindi, Marathi, Tamil and Telugu.
+
+### 2. Nothing lost, nothing counted twice
+- Phones re-send old messages on every sync; the server **ignores repeats** (idempotent ids).
+- Reports of the same kind **within 150 m and 30 min merge into one incident** with a report count.
+- The dashboard shows **how long each message waited offline** before reaching the server.
+
+### 3. Voice notes and photos from the field
+- **Voice SOS in any language** → speech-to-text (Groq **Whisper large-v3**, Gemini as fallback) → English translation → the same Triage pipeline as text. The officer can **play the original recording**.
+- **Photo hazard check**: a vision model looks at field photos for a fallen tree, landslide, flooded road, damaged bridge and similar. It **suggests a road block at the photo's location**, with the photo as proof. **The officer accepts or dismisses**; nothing is blocked automatically.
+- Without an AI key or internet, audio and photos are **still stored and shown**, so nothing is lost.
+
+### 4. Real routing on real Dehradun roads
+- The Dehradun road network from **OpenStreetMap** (OSMnx + NetworkX); routes avoid active hazards.
+- **Swiggy-style live re-routing**: when a road is blocked, every unit driving through it gets a new route and a phone alert with the reason.
+- **Drones fly straight** and ignore road blocks; ground units follow roads.
+- **Trust levels for road blocks**: official roles block a road at once; citizen reports need 2 reports or an officer's confirmation.
+
+### 5. Responder phones
+- Login per unit; the task arrives in seconds with route, ETA, people, the citizen's own message, sound and vibration.
+- **On the way → Reached → Done** updates the dashboard live; the phone shares **live GPS** and the unit moves on the map.
+- Responders can report a road block from the field. The officer can also **complete or cancel a route** from the map.
+
+### 6. Control room dashboard
+- Priority-sorted queue with type icons, **DRILL** badges, Verifier marks and the AI urgency reading.
+- Map: OpenStreetMap / streets / satellite, labelled routes and units, flood and accident layers, shelters, photo-hazard pins.
+- **AI agents · live** strip, so you can watch every agent action as it happens.
+- Headline numbers: lives at risk, critical, awaiting approval, median time to dispatch, AI actions.
+- Light and dark themes, VS Code-style collapsible panels, and a one-click **Present** mode.
 
 ---
 
-## 📁 Repository Organization
+## The five AI agents
 
-```text
-.
-├── app-universal-debug.apk           # Pre-compiled universal Android APK for immediate testing
-├── README.md                          # Hackathon Master Documentation (Judges' Guide)
-├── screenshots/                       # System demonstrations and user interface captures
-├── docs/                              # Supplementary architectural briefs and guides
-└── src/
-    ├── bitchat-android/               # Native Android Mesh Companion App
-    │   └── app/src/main/java/com/bitchat/android/
-    │       ├── ui/BeaconControlSheet.kt   # Live Beacon Control Studio (Capacity Steppers)
-    │       ├── ui/ShelterSheet.kt         # Shelter discovery & status viewer
-    │       ├── ui/ChatScreen.kt           # Tactical mesh messaging & SOS dispatch view
-    │       ├── ui/ChatViewModel.kt        # State management & mesh capacity broadcast
-    │       └── sync/                      # CivilizationSyncClient (auto bundle flushing)
-    │
-    └── rescue-dashboard/              # Central Tactical Command Center
-        ├── backend/                   # FastAPI Tactical Bridge
-        │   ├── bridge.py              # Rest API, WebSocket, Beacon CRUD & capacity authorization
-        │   ├── test_beacon.py         # Unit tests for beacon capacity & ownership validation
-        │   ├── agents/groq_triage.py  # AI-assisted incident triage & unit recommendation
-        │   └── tools/                 # OSMnx graph builder and place coordinates normalizer
-        ├── frontend/                  # React + Leaflet COP Dashboard
-        │   ├── src/BeaconControl.jsx  # Beacon Studio (live capacity +/- steppers, slider, notes)
-        │   ├── src/CityLayers.jsx     # Dual-ring radar beacon markers & capacity badges
-        │   ├── src/App.jsx            # Main tactical command container & WebSocket listener
-        │   └── src/styles.css         # Glassmorphism design system & radar pulse keyframes
-        └── responder/                 # Mobile-first field responder turn-by-turn routing app
+| Agent | Built with | What it does | Who decides |
+|---|---|---|---|
+| **Triage** | LangChain structured output | Reads SOS in **Hindi, English, Hinglish and typos**; extracts type, people, injured, children/elderly, urgency, landmarks, needs and an English summary | Suggestion only |
+| **Verifier** | Code gathers evidence → AI verdict | **Confirmed / Likely real / Unverified / Possible fake** from different senders, official confirmation, spam pattern, location, test words. **Never hides an SOS**; it only warns | Officer |
+| **Dispatch Planner** | **LangGraph** graph with `interrupt` + SQLite checkpointer | Plans **all waiting incidents together** using **real road ETAs**, gives a reason per choice, code rejects impossible plans, then **pauses for the officer** | Officer approves line by line |
+| **Route Watch** | **LangGraph** graph with `interrupt` | When a citizen reports a hazard **on the road ahead of a moving unit**: short detour = automatic re-route (logged); long detour = asks the officer. Injured person on the route = **"Stop to help?"** suggestion | Officer for anything big |
+| **Commander Assistant** | **LangGraph ReAct** agent with read-only tools | Officer asks in English, Hindi or Hinglish: *"Which incidents have no unit?"*, *"Boat kahan hai?"*. One-click **Situation Report** for the DM / SDRF | Read-only: cannot change anything |
+
+Plus the **field media AI** (Whisper speech-to-text, translation and vision photo check) that feeds voice notes and photos into the same pipeline.
+
+### Dispatch Planner graph
+
+```mermaid
+flowchart LR
+    G["gather<br/>(tools: incidents, free units,<br/>blocked roads, real road ETAs)"] --> P["plan<br/>(AI plans all incidents together)"]
+    P --> K["check<br/>(code rejects busy / wrong / duplicate units,<br/>covers incidents the AI left waiting)"]
+    K --> H{{"⏸ human_approval<br/>(graph pauses, state saved)"}}
+    H -- "officer ticks lines" --> E["execute<br/>(same dispatch code as the button)"]
+    H -- "officer rejects" --> X["nothing moves"]
+```
+
+### Route Watch graph
+
+```mermaid
+flowchart LR
+    N["New citizen report<br/>(tree down, landslide, injured)"] --> RD["read<br/>(AI: does it block the road?)"]
+    RD --> MT{"on a moving unit's<br/>route ahead? (≤100 m)"}
+    MT -- no --> Z["no action"]
+    MT -- "road blocked" --> DT{"detour<br/>≤ 5 min?"}
+    DT -- yes --> AUTO["auto re-route<br/>+ phone alert + log"]
+    DT -- no --> OFF{{"⏸ officer decides"}}
+    MT -- "injured person<br/>within 300 m" --> HELP{{"⏸ Stop to help?<br/>original incident offered to next unit"}}
+```
+
+### Commander Assistant (ReAct)
+
+```mermaid
+flowchart LR
+    Q["Officer question<br/>EN / HI / Hinglish"] --> T["AI thinks"]
+    T --> TL["picks a read-only tool<br/>overview · incidents · incident detail<br/>units · roads · shelters"]
+    TL --> T
+    T --> ANS["answer"]
+    ANS --> CK["code check: every #id mentioned exists"]
+    CK --> O["shown with 'looked at: …' + model label"]
+```
+
+In the **Situation Report**, code counts every number from the database; the AI writes only the sentences.
+Code then **deletes any AI line containing a number that is not in the real data**.
+
+---
+
+## How priority is decided
+
+Every incident gets a **0–100 score from visible rules**. The AI never sets the number; it can only add a fixed, labelled bonus.
+
+```
+priority = type weight + people + extra reports + waiting time + camera confirmed + AI urgency bonus   (max 100)
+```
+
+```mermaid
+xychart-beta
+    title "Type weight (points) by emergency type"
+    x-axis ["trapped", "collapse", "injured", "fire", "landslide", "fall", "medical", "accident", "flood", "missing", "crowd", "other"]
+    y-axis "points" 0 --> 45
+    bar [40, 40, 35, 35, 35, 30, 30, 30, 25, 25, 20, 10]
+```
+
+| Factor | Points | Cap |
+|---|---|---|
+| Emergency type | see chart | 40 |
+| People | +2 per person | 20 |
+| Extra reports of the same incident | +3 each | 15 |
+| Waiting time (so nobody is forgotten) | +2 per 5 minutes | 15 |
+| Seen on camera | +10 | 10 |
+| Triage Agent read it as critical / high | +15 / +8 | 15 |
+
+Severity: **critical ≥ 70**, high ≥ 50, medium ≥ 30, low < 30. Clicking an incident shows exactly how its score was built,
+for example `fire +35 · 2 people +4 · AI read it as critical +15`.
+
+### Incident lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> new: SOS received
+    new --> suggested: nearest suitable unit suggested
+    suggested --> held: officer holds
+    held --> suggested
+    suggested --> dispatched: officer approves
+    dispatched --> en_route: responder "On the way"
+    en_route --> on_site: "Reached"
+    on_site --> resolved: "Done"
+    dispatched --> suggested: route cancelled / unit diverted
+    en_route --> suggested: route cancelled / unit diverted
+    resolved --> [*]
 ```
 
 ---
 
-## 🚀 Quick Start & Live Demonstration Guide
+## Trust and safety design
 
-Follow these simple steps to run the complete ResQMesh ecosystem locally.
-
-### 📋 Prerequisites
-- **Python**: Version 3.10 or higher
-- **Node.js**: Version 18 or higher (`npm`)
-- **Android Device / Emulator** (Optional): To run `app-universal-debug.apk`
+- **Human in the loop**: no unit moves without an officer's approval. The only exception is a short precautionary detour, which is logged.
+- **Code checks the AI**: fixed output schemas, a safety check on every plan, id checks on every answer, and number checks on every report.
+- **The AI never hides an SOS**: a "possible fake" is still shown, just marked.
+- **Every AI output is labelled** ("AI suggestion (Groq · model)" or "rule suggestion").
+- **Rules take over automatically** if the AI or the internet fails; the control room keeps working.
+- **Tamper-evident action log**: every decision is hash-chained with who made it (officer, rule or AI). The top bar shows **"Log intact"**.
+- **Drills can never pass as real**: everything from the drill script carries a DRILL badge.
+- **Data stays local**: the database lives on the control-room machine. Only message text, audio and photos are sent to the AI provider for reading.
 
 ---
 
-### Step 1: Start the Tactical Command Center (Backend + COP Map)
+## Before vs after
 
-```bash
-# 1. Navigate to the backend directory
-cd src/rescue-dashboard/backend
+| Step | Today (typical) | With RESQ |
+|---|---|---|
+| Sending an SOS when towers are down | Not possible | Mesh SOS, carried phone to phone until one finds internet |
+| Reading reports in Hinglish / voice | Manual reading and translation | Triage Agent + speech-to-text, English summary on the card |
+| Duplicates and fakes | Counted by hand, often missed | Automatic merge; Verifier marks evidence |
+| Choosing which unit to send | Phone calls, guesswork on distance | Real road ETA for each unit; AI plans all incidents together; officer approves |
+| A road gets blocked mid-route | Unit discovers it on arrival | Route Watch re-routes live and alerts the responder's phone |
+| Briefing the District Magistrate | Written by hand from registers | One-click Situation Report from live data |
+| Accountability | Paper registers | Hash-chained log of every decision, human or AI |
 
-# 2. Create and activate a virtual environment
+---
+
+## Architecture and data
+
+```mermaid
+flowchart TB
+    subgraph App["bitchat-android (field phones)"]
+        direction LR
+        MESH["BLE + Wi-Fi Aware mesh"] --> SYNC["Auto sync worker<br/>civ-sync bundle"]
+        MESH --> UP["Field media uploader<br/>photo · voice"]
+    end
+
+    subgraph Server["rescue-dashboard/backend (FastAPI, control-room machine)"]
+        direction LR
+        BR["bridge.py<br/>civ-sync"] --> V1["v1.py<br/>events · hazards · assignments<br/>units · re-routing"]
+        FM["field_media.py<br/>voice · photo"] --> V1
+        V1 --> AG["agents/<br/>triage · verifier · planner<br/>route_watch · commander · media_ai"]
+        AG --> RT["routing.py<br/>OSM road graph"]
+        V1 --> DB[("rescue.db<br/>incidents · reports · events · hazards<br/>assignments · verifications · log")]
+        AG --> RUNS[("agent_runs.db<br/>LangGraph checkpoints")]
+        V1 --> HUB["WebSocket hub"]
+    end
+
+    SYNC --> BR
+    UP --> FM
+    AG -.-> LLM["Groq / Gemini<br/>optional: rules if absent"]
+    HUB --> DASH["Dashboard<br/>React + Leaflet"]
+    HUB --> RESP["Responder web app"]
+```
+
+**Why it runs on a control-room machine and not on serverless hosting (e.g. Vercel):**
+the dashboards need always-open WebSocket connections, the SQLite database and log need a permanent disk,
+the road graph is loaded into memory, and LangGraph agents pause and wait for the officer. Most importantly,
+in a disaster **the internet fails first**: an offline-first control room keeps working at the district EOC.
+For the demo, a free Cloudflare tunnel gives the laptop a public HTTPS address for the phones.
+In production it would run on the district EOC server or the State Data Centre. For a cloud backup there is
+`tools/edge_sync.py`, which pushes everything to a cloud copy whenever any internet link appears.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Field app | Kotlin, Jetpack Compose, BLE + Wi-Fi Aware mesh (bitchat), WorkManager, OkHttp, osmdroid |
+| Server | Python, FastAPI, Uvicorn, SQLite, WebSockets |
+| AI agents | LangGraph (StateGraph, `interrupt`, SQLite checkpointer, ReAct), LangChain, Pydantic structured output |
+| AI models | Groq `openai/gpt-oss-120b` (text), Whisper large-v3 (speech), Groq vision models (photos); Gemini 2.5 Flash as fallback |
+| Routing | OpenStreetMap road graph via OSMnx + NetworkX; straight-line for drones |
+| Dashboard and responder | React 18, Vite, Leaflet / react-leaflet |
+| Hosting (demo) | Laptop + Cloudflare quick tunnel (free) |
+
+Everything used is free: Groq free tier, OpenStreetMap, Cloudflare tunnel, SQLite.
+
+---
+
+## Run it
+
+**Needs:** Windows with Python 3.10+ and Node 18+. Full guides: [`rescue-dashboard/README.md`](rescue-dashboard/README.md) and
+[`rescue-dashboard/DEHRADUN_RUN.md`](rescue-dashboard/DEHRADUN_RUN.md).
+
+**One command (installs, builds, starts and opens a tunnel):**
+
+```powershell
+cd rescue-dashboard
+.\run.bat -Tunnel
+```
+
+**Or manually:**
+
+```powershell
+# one time
+cd rescue-dashboard\backend
 python -m venv .venv
-
-# Windows PowerShell:
 .\.venv\Scripts\Activate.ps1
-# macOS / Linux:
-# source .venv/bin/activate
-
-# 3. Install dependencies
 pip install -r requirements.txt
+cd ..\frontend;  npm install; npm run build
+cd ..\responder; npm install; npm run build
 
-# 4. Verify test suite (including SOS beacon capacity tests)
-python -m pytest test_beacon.py -v
+# every time: terminal 1
+cd rescue-dashboard\backend
+.\.venv\Scripts\Activate.ps1
+$env:ROAD_GRAPH = "roads_dehradun.graphml"   # after building it with tools\build_graph.py
+uvicorn main:app --host 0.0.0.0 --port 8001
 
-# 5. Launch the Tactical Command Bridge server (runs on port 8001)
-python bridge.py
+# every time: terminal 2 (public HTTPS address for the phones)
+cloudflared tunnel --url http://localhost:8001
 ```
 
-In a separate terminal, launch the Frontend Dashboard:
+**AI key (optional; rules work without it):** create `rescue-dashboard/backend/.env` containing `GROQ_API_KEY=...`.
+Never commit this file.
 
-```bash
-# 1. Navigate to frontend
-cd src/rescue-dashboard/frontend
+| Open | Address |
+|---|---|
+| Control-room dashboard | `http://localhost:8001` |
+| Responder app (on phones) | `https://<tunnel>/responder/` |
+| bitchat Sync URL (in the app's Sync settings) | `https://<tunnel>/api/v1/bitchat/civ-sync` |
+| All API endpoints | `http://localhost:8001/docs` |
 
-# 2. Install dependencies & launch dev server
-npm install
-npm run dev
+Responder logins: `AMB1`, `AMB2` (ambulances), `RES3` (SDRF team), `BOA4` (boat), `FIR5` (fire), `DRO6` (drone), `POL7` (police).
+
+---
+
+## 3-minute demo for judges
+
+1. **Reset demo**, then run `python simulator\drill_dehradun.py`. Hinglish SOS arrive at real Dehradun spots; a second report near Tapkeshwar **merges**.
+2. Open the top incident: **Triage** reading, **Verifier** verdict, and **why** it has that priority.
+3. **AI Planner** tab → *Plan with AI*: watch the graph run, then approve.
+4. A responder phone receives the task; tap **On the way** and the unit moves on the map.
+5. Send a citizen **"tree fallen on the road"** on the unit's route (or `drill_dehradun.py --citizen`): **Route Watch** re-routes, and the phone shows the new route and reason.
+6. Send a **voice note** or a **photo of a blocked road** from the app: transcript, or a camera pin asking the officer to block the road.
+7. **Ask AI** tab: *"Which incidents have no unit yet?"*, then **Situation Report**.
+8. Show **Log intact** and the **Action log**: every human and AI decision, hash-chained.
+
+---
+
+## Testing
+
+```powershell
+cd rescue-dashboard\backend
+python -m pytest -q
 ```
 
-> 🌐 **Access points:**
-> - **Tactical COP Dashboard**: `http://localhost:5173` (or `http://localhost:8001`)
-> - **Interactive Swagger API Docs**: `http://localhost:8001/docs`
-> - **Responder Navigation Portal**: `http://localhost:8001/responder/`
+**89 automated tests pass**, covering the bridge, merging, priority, routing and re-routing, all agents (with a fake AI model, so no key or internet is needed),
+voice and photo handling, route actions and the AI retry logic.
 
 ---
 
-### Step 2: Try the SOS Beacon & Live Capacity Control Studio
+## Honest limits and next steps
 
-1. Open the Dashboard at `http://localhost:5173`.
-2. Click the **🚨 SOS Beacons** tab in the control dock.
-3. Deploy a new beacon with custom GPS coordinates (or auto-fetch) and set initial capacity (e.g., `50`).
-4. Look at the live map: Notice the **crimson glowing dual concentric radar rings** and the live capacity tag **`👥 50`**.
-5. Adjust capacity using the tactile **`+10` / `-10` / `+1` / `-1`** buttons: Observe the marker badge update instantly across the map without reloading!
-
----
-
-### Step 3: Test Incident Triage & Offline Road Routing
-
-- Send a simulated SOS distress bundle to `POST /api/v1/bitchat/civ-sync`:
-```bash
-curl -X POST http://localhost:8001/api/v1/bitchat/civ-sync \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"sender": "mesh-peer-01", "text": "Landslide near Sahastradhara, 4 trapped, need immediate SDRF", "timestamp": 1730450000, "lat": 30.3872, "lon": 78.1316}]}'
-```
-- In the dashboard, watch the incident appear instantly with AI triage urgency **CRITICAL**, casualty count **4**, and an automated recommendation to dispatch the nearest SDRF team with a road hazard-avoiding route.
-
----
-
-## 📊 Automated Verification & Unit Test Results
-
-The backend includes comprehensive automated unit tests validating beacon deployment, ownership token authorization, capacity patching, and mesh bundle reconciliation:
-
-```text
-============================= test session starts =============================
-platform win32 -- Python 3.10.11, pytest-8.3.5
-rootdir: c:\Users\rohan\OneDrive\Desktop\dehradun\gehu_hack\src\rescue-dashboard\backend
-collected 4 items
-
-test_beacon.py::test_create_and_fetch_beacon PASSED                     [ 25%]
-test_beacon.py::test_update_beacon_capacity_authorized PASSED           [ 50%]
-test_beacon.py::test_update_beacon_unauthorized_rejected PASSED         [ 75%]
-test_beacon.py::test_mesh_sync_ingests_civilian_beacon PASSED          [100%]
-
-============================== 4 passed in 1.04s ==============================
-```
-
----
-
-## 🎯 Real-World Impact & Hackathon Feasibility
-
-- **Dehradun & Himalayan Specificity**: Specially customized with Dehradun's exact road topologies (Clock Tower, Sahastradhara, Prem Nagar, Clement Town, Jolly Grant) to withstand typical monsoon cloudbursts and landslides.
-- **Extreme Frugality**: Operates without expensive proprietary radio hardware. Utilizes standard civilian Android smartphones already in people's pockets.
-- **Privacy & Security by Design**: Mesh communications use localized ephemeral peer IDs; beacon updates are cryptographically bound to creator tokens, preventing panic-inducing spoofing.
-- **Ready for Field Deployment**: Pre-built Android universal APK (`app-universal-debug.apk`) is packaged in the root directory for instantaneous testing on physical devices.
-
----
-
-## 👥 Hackathon Team & Acknowledgements
-
-Developed with passion for the **GEHU Hackathon 2026**. Dedicated to disaster resilience and life-saving technology for Uttarakhand and beyond.
-
-*Open-source libraries utilized: OSMnx, NetworkX, Leaflet, FastAPI, Groq, and Android Jetpack.*
+- **Local languages**: Hindi, Hinglish, Nepali and English work well. **Garhwali and Jaunsari** have no dedicated speech model; they usually come out as Hindi or Nepali text and are then translated. Next: a local emergency-word glossary checked by native speakers.
+- **Voice over the mesh is slow**: audio is much larger than text, so the text SOS travels first and the recording follows when a phone with internet uploads it.
+- **Demo hosting**: the free tunnel address changes when restarted. Production would use a fixed government domain on the district EOC server.
+- **Responder PINs** are demo defaults and must be changed before real use.
+- **Next agent**: a **Risk Predictor** that reads the rain forecast and suggests moving boats and rescue teams **before** flooding starts.
